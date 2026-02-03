@@ -327,14 +327,52 @@ struct DashboardView: View {
     
     private var recentActivitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recent Responses")
-                .font(.headline)
+            HStack {
+                Text("Recent Responses")
+                    .font(.headline)
+                Spacer()
+                if recentResponses.isEmpty {
+                    Text("Demo Data")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(4)
+                }
+            }
             
             if recentResponses.isEmpty {
-                Text("No response data yet. Connect a platform to start tracking.")
+                // Show demo responses
+                ForEach(DemoDataGenerator.generateDemoRecentResponses()) { response in
+                    HStack {
+                        Image(systemName: response.platform.icon)
+                            .foregroundColor(response.platform.color)
+                        
+                        VStack(alignment: .leading) {
+                            Text(response.sender)
+                                .lineLimit(1)
+                            Text(response.timestamp, style: .relative)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Text(response.formattedLatency)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(response.latencySeconds < 3600 ? .green : .orange)
+                    }
+                    .padding(.vertical, 8)
+                    
+                    Divider()
+                }
+                
+                Text("Connect a platform to see your real data")
+                    .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 32)
+                    .padding(.top, 8)
             } else {
                 ForEach(recentResponses.prefix(5)) { response in
                     HStack {
@@ -385,26 +423,31 @@ struct DashboardView: View {
     }
     
     private func loadMetrics() async {
-        // Compute metrics from response windows
-        // For now, generate sample data
-        let sampleMetrics = ResponseMetrics(
-            platform: nil,
-            timeRange: appState.selectedTimeRange,
-            sampleCount: 0,
-            medianLatency: 0,
-            meanLatency: 0,
-            p90Latency: 0,
-            p95Latency: 0,
-            minLatency: 0,
-            maxLatency: 0,
-            workingHoursMedian: nil,
-            nonWorkingHoursMedian: nil,
-            previousPeriodMedian: nil,
-            trendPercentage: nil
-        )
+        // Check if we have real data or should show demo
+        let hasRealData = !recentResponses.isEmpty
         
-        await MainActor.run {
-            metrics = recentResponses.isEmpty ? nil : sampleMetrics
+        if hasRealData {
+            // Compute real metrics from response windows
+            let analyzer = ResponseAnalyzer.shared
+            let realMetrics = analyzer.computeMetrics(
+                for: recentResponses.map { $0 },
+                platform: appState.selectedPlatform,
+                timeRange: appState.selectedTimeRange
+            )
+            await MainActor.run {
+                metrics = realMetrics
+                dailyData = analyzer.computeDailyMetrics(
+                    windows: recentResponses.map { $0 },
+                    platform: appState.selectedPlatform,
+                    timeRange: appState.selectedTimeRange
+                )
+            }
+        } else {
+            // Show demo data to showcase the UI
+            await MainActor.run {
+                metrics = DemoDataGenerator.generateDemoMetrics(timeRange: appState.selectedTimeRange)
+                dailyData = DemoDataGenerator.generateDemoDailyMetrics(timeRange: appState.selectedTimeRange)
+            }
         }
     }
 }
