@@ -1,0 +1,98 @@
+name: ResponseTime
+options:
+  bundleIdPrefix: com.allens
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    PRODUCT_NAME: Response Time
+    PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_STRICT_OBJC_MSGSEND: true
+    CODE_SIGN_STYLE: Automatic
+    INFOPLIST_FILE: ResponseTime/Info.plist
+
+targets:
+  ResponseTime:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - ResponseTime
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime
+        INFOPLIST_FILE: ResponseTime/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ResponseTime/ResponseTime.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: ResponseTime/Info.plist
+      properties:
+        CFBundleName: Response Time
+        CFBundleDisplayName: Response Time
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundlePackageType: APPL
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: "Copyright © 2025 Mark Allen. All rights reserved."
+        NSPrincipalClass: NSApplication
+    entitlements:
+      path: ResponseTime/ResponseTime.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+
+  ResponseTimeWidget:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - ResponseTimeWidget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime.widget
+        PRODUCT_MODULE_NAME: ResponseTimeWidgetExtension
+        INFOPLIST_FILE: ResponseTimeWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ResponseTimeWidget/ResponseTimeWidget.entitlements
+    info:
+      path: ResponseTimeWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Response Time Widget
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: ResponseTimeWidget/ResponseTimeWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)com.allens.responsetime
+    dependencies:
+      - target: ResponseTime
+        embed: false
+
+schemes:
+  ResponseTime:
+    build:
+      targets:
+        ResponseTime: all
+        ResponseTimeWidget: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
