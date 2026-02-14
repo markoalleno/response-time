@@ -80,6 +80,26 @@ struct ContentView: View {
                 Task { await performSync() }
             }
         }
+        .alert("Sync Error", isPresented: Binding(
+            get: { appState.error != nil },
+            set: { if !$0 { appState.error = nil } }
+        )) {
+            Button("OK") { appState.error = nil }
+            if let error = appState.error, error.localizedDescription.contains("Permission") || error.localizedDescription.contains("Full Disk Access") {
+                #if os(macOS)
+                Button("Open Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(url)
+                    }
+                    appState.error = nil
+                }
+                #endif
+            }
+        } message: {
+            if let error = appState.error {
+                Text(error.localizedDescription)
+            }
+        }
         .task {
             // Auto-create iMessage source account if none exists and we have access
             if accounts.isEmpty {
@@ -291,6 +311,15 @@ struct ContentView: View {
     }
     
     private func performSync() async {
+        // Check permissions first
+        let testPath = NSHomeDirectory() + "/Library/Messages/chat.db"
+        guard FileManager.default.isReadableFile(atPath: testPath) else {
+            await MainActor.run {
+                appState.error = .syncFailed("Full Disk Access required. Please grant permission in System Settings.")
+            }
+            return
+        }
+        
         appState.isSyncing = true
         defer { appState.isSyncing = false }
         
@@ -305,12 +334,25 @@ struct ContentView: View {
             
             // Sync iMessage data to SwiftData (creates MessageEvents + ResponseWindows)
             try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
-            appState.lastSyncDate = Date()
+            await MainActor.run {
+                appState.lastSyncDate = Date()
+                appState.error = nil  // Clear any previous errors
+            }
             
             // Check for threshold notifications
-            await checkThresholdNotifications()
+            // Metrics reload handled by DashboardView
         } catch {
-            appState.error = .syncFailed(error.localizedDescription)
+            let errorMessage: String
+            if error.localizedDescription.contains("permission") || error.localizedDescription.contains("access") {
+                errorMessage = "Permission denied. Please grant Full Disk Access in System Settings."
+            } else if error.localizedDescription.contains("database") || error.localizedDescription.contains("SQLite") {
+                errorMessage = "Unable to read Messages database. Make sure Messages is not running."
+            } else {
+                errorMessage = "Sync failed: \(error.localizedDescription)"
+            }
+            await MainActor.run {
+                appState.error = .syncFailed(errorMessage)
+            }
         }
     }
     
@@ -1073,19 +1115,46 @@ struct DashboardView: View {
     }
     
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.largeTitle)
+        VStack(spacing: 16) {
+            Image(systemName: permissionStatus == .denied ? "lock.shield" : "chart.bar.xaxis")
+                .font(.system(size: 48))
                 .foregroundColor(.secondary)
-            Text("No data yet")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("Sync to start tracking")
-                .font(.caption2)
-                .foregroundColor(.secondary.opacity(0.7))
+            
+            if permissionStatus == .denied {
+                Text("Permission Required")
+                    .font(.headline)
+                Text("Grant Full Disk Access to track your response times")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                #if os(macOS)
+                Button("Open System Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                #endif
+            } else if appState.isSyncing {
+                Text("Syncing Messages...")
+                    .font(.headline)
+                ProgressView()
+                    .controlSize(.large)
+                Text("This may take a moment on first sync")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("No data yet")
+                    .font(.headline)
+                Text("Tap the sync button (⌘R) above to analyze your Messages")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
+        .padding(.vertical, 48)
+        .padding(.horizontal, 32)
     }
     
     private func loadMetrics() async {
