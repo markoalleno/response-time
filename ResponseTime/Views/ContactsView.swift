@@ -670,6 +670,7 @@ struct ContactDetailSheet: View {
     let contact: iMessageConnector.ContactStats
     let connector: iMessageConnector
     var resolvedName: String? = nil
+    var overallMedian: TimeInterval? = nil
     
     @Environment(\.dismiss) private var dismiss
     @State private var responseTimes: [ResponseTimeData] = []
@@ -736,6 +737,27 @@ struct ContactDetailSheet: View {
                             value: (responseTimes.map(\.latencySeconds).max()).map { formatDuration($0) } ?? "--",
                             color: .red
                         )
+                    }
+                    
+                    // Compare to average
+                    if let contactMedian = contact.medianResponseTime {
+                        HStack {
+                            Image(systemName: contactMedian < (overallMedian ?? contactMedian) ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
+                                .foregroundColor(contactMedian < (overallMedian ?? contactMedian) ? .green : .orange)
+                            
+                            if let overall = overallMedian {
+                                let diff = abs(contactMedian - overall)
+                                let pct = overall > 0 ? Int((diff / overall) * 100) : 0
+                                Text(contactMedian < overall ? "\(pct)% faster than your average" : "\(pct)% slower than your average")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding()
+                        .background(cardBackgroundColor)
+                        .cornerRadius(12)
                     }
                     
                     // Response time trend
