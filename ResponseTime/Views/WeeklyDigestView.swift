@@ -77,6 +77,9 @@ struct WeeklyDigestView: View {
                     // Top contacts this week
                     topContactsCard
                     
+                    // Highlights
+                    highlightsCard
+                    
                     // Day-by-day breakdown
                     dayByDayCard
                 }
@@ -372,6 +375,72 @@ struct WeeklyDigestView: View {
             let sorted = latencies.sorted()
             return (email: email, count: latencies.count, median: sorted[sorted.count / 2])
         }.sorted { $0.count > $1.count }
+    }
+    
+    // MARK: - Highlights
+    
+    private var highlightsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Week Highlights")
+                .font(.headline)
+            
+            let latencies = weekWindows.map(\.latencySeconds).sorted()
+            let highlights = computeHighlights(latencies: latencies)
+            
+            ForEach(highlights, id: \.text) { highlight in
+                HStack(spacing: 10) {
+                    Text(highlight.emoji)
+                        .font(.title3)
+                    Text(highlight.text)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    private struct Highlight: Hashable {
+        let emoji: String
+        let text: String
+    }
+    
+    private func computeHighlights(latencies: [TimeInterval]) -> [Highlight] {
+        var highlights: [Highlight] = []
+        
+        // Fastest response
+        if let fastest = latencies.first {
+            highlights.append(Highlight(emoji: "⚡", text: "Fastest response: \(formatDuration(fastest))"))
+        }
+        
+        // Total responses
+        highlights.append(Highlight(emoji: "📊", text: "\(weekWindows.count) responses tracked"))
+        
+        // % under 30 min
+        let under30 = latencies.filter { $0 < 1800 }.count
+        let pct = latencies.isEmpty ? 0 : Int(Double(under30) / Double(latencies.count) * 100)
+        highlights.append(Highlight(emoji: "🏃", text: "\(pct)% of responses under 30 minutes"))
+        
+        // Busiest day
+        let dailyData = computeDailyData()
+        if let busiest = dailyData.max(by: { $0.count < $1.count }), busiest.count > 0 {
+            highlights.append(Highlight(emoji: "📅", text: "Busiest day: \(busiest.day) (\(busiest.count) responses)"))
+        }
+        
+        // Comparison to previous week
+        let prevLatencies = previousWeekWindows.map(\.latencySeconds).sorted()
+        if !prevLatencies.isEmpty && !latencies.isEmpty {
+            let thisMedian = latencies[latencies.count / 2]
+            let prevMedian = prevLatencies[prevLatencies.count / 2]
+            if thisMedian < prevMedian {
+                let improvement = Int(((prevMedian - thisMedian) / prevMedian) * 100)
+                highlights.append(Highlight(emoji: "📈", text: "Improved \(improvement)% vs last week"))
+            }
+        }
+        
+        return highlights
     }
     
     // MARK: - Day by Day
