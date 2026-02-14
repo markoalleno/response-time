@@ -20,6 +20,7 @@ struct AnalyticsView: View {
         case hourly = "Hourly"
         case distribution = "Distribution"
         case byPlatform = "By Platform"
+        case byContact = "By Contact"
         
         var id: String { rawValue }
         
@@ -32,6 +33,7 @@ struct AnalyticsView: View {
             case .hourly: return "clock"
             case .distribution: return "chart.bar.fill"
             case .byPlatform: return "chart.pie.fill"
+            case .byContact: return "person.3.fill"
             }
         }
     }
@@ -152,6 +154,8 @@ struct AnalyticsView: View {
             distributionChart
         case .byPlatform:
             platformChart
+        case .byContact:
+            contactChart
         }
     }
     
@@ -518,6 +522,67 @@ struct AnalyticsView: View {
                 }
             }
         }
+    }
+    
+    private var contactChart: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Response Time by Contact")
+                .font(.headline)
+            
+            let contactData = computeContactData()
+            if contactData.isEmpty {
+                emptyChartState
+            } else {
+                Chart {
+                    ForEach(contactData, id: \.name) { item in
+                        BarMark(
+                            x: .value("Response Time", item.median / 60),
+                            y: .value("Contact", item.name)
+                        )
+                        .foregroundStyle(item.median < 1800 ? Color.green : item.median < 3600 ? Color.blue : Color.orange)
+                        .annotation(position: .trailing) {
+                            Text(formatDuration(item.median))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .chartXAxisLabel("Median (minutes)")
+                .frame(minHeight: CGFloat(contactData.count) * 35)
+            }
+        }
+    }
+    
+    private func computeContactData() -> [(name: String, median: TimeInterval, count: Int)] {
+        let validWindows = responseWindows.filter(\.isValidForAnalytics)
+        
+        // Group by participant email
+        var byContact: [String: [TimeInterval]] = [:]
+        for window in validWindows {
+            guard let email = window.inboundEvent?.participantEmail else { continue }
+            byContact[email, default: []].append(window.latencySeconds)
+        }
+        
+        return byContact.map { (email, latencies) in
+            let sorted = latencies.sorted()
+            let median = sorted[sorted.count / 2]
+            let name = email.contains("@") ? email : formatPhoneNumber(email)
+            return (name: name, median: median, count: latencies.count)
+        }
+        .sorted { $0.median < $1.median }
+        .prefix(15) // Top 15
+        .map { $0 }
+    }
+    
+    private func formatPhoneNumber(_ phone: String) -> String {
+        let digits = phone.filter(\.isNumber)
+        if digits.count == 11 && digits.hasPrefix("1") {
+            let area = digits.dropFirst().prefix(3)
+            let mid = digits.dropFirst(4).prefix(3)
+            let last = digits.suffix(4)
+            return "(\(area)) \(mid)-\(last)"
+        }
+        return phone
     }
     
     private func computePlatformData() -> [(platform: Platform, median: TimeInterval)] {
