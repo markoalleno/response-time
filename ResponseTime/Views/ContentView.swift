@@ -355,6 +355,7 @@ struct DashboardView: View {
                     GridItem(.flexible(), spacing: 16),
                     GridItem(.flexible(), spacing: 16)
                 ], spacing: 16) {
+                    responseScoreCard
                     responseTimeCard
                     trendCard
                     platformBreakdownCard
@@ -362,6 +363,7 @@ struct DashboardView: View {
                 }
                 #else
                 LazyVStack(spacing: 16) {
+                    responseScoreCard
                     responseTimeCard
                     trendCard
                     platformBreakdownCard
@@ -502,6 +504,42 @@ struct DashboardView: View {
         #if os(macOS)
         .frame(maxWidth: 400)
         #endif
+    }
+    
+    private var responseScoreCard: some View {
+        DashboardCard(title: "Response Score", icon: "star.fill") {
+            let score = ResponseScore.compute(from: recentResponses)
+            if score.overall == 0 {
+                emptyState
+            } else {
+                VStack(spacing: 12) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(score.grade)
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .foregroundColor(scoreColor(score.gradeColor))
+                        Text("\(score.overall)/100")
+                            .font(.title3)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack(spacing: 6) {
+                        ScoreBar(label: "Speed", value: score.speedScore, color: .blue)
+                        ScoreBar(label: "Consistency", value: score.consistencyScore, color: .purple)
+                        ScoreBar(label: "Coverage", value: score.coverageScore, color: .green)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func scoreColor(_ name: String) -> Color {
+        switch name {
+        case "green": return .green
+        case "yellow": return .yellow
+        case "orange": return .orange
+        case "red": return .red
+        default: return .secondary
+        }
     }
     
     private var responseTimeCard: some View {
@@ -903,6 +941,39 @@ struct TrendChart: View {
                     AxisValueLabel(format: .dateTime.weekday(.abbreviated))
                 }
             }
+        }
+    }
+}
+
+// MARK: - Score Bar
+
+struct ScoreBar: View {
+    let label: String
+    let value: Int
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 80, alignment: .leading)
+            
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.secondary.opacity(0.15))
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color)
+                        .frame(width: geo.size.width * Double(value) / 100)
+                }
+            }
+            .frame(height: 6)
+            
+            Text("\(value)")
+                .font(.caption.monospacedDigit())
+                .foregroundColor(.secondary)
+                .frame(width: 28, alignment: .trailing)
         }
     }
 }

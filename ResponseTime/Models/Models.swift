@@ -436,6 +436,65 @@ struct PlatformMetrics: Identifiable, Sendable {
     let goalProgress: Double?
 }
 
+// MARK: - Response Score
+
+struct ResponseScore: Sendable {
+    let overall: Int // 0-100
+    let speedScore: Int
+    let consistencyScore: Int
+    let coverageScore: Int
+    let grade: String
+    let gradeColor: String // "green", "yellow", "orange", "red"
+    
+    static let empty = ResponseScore(overall: 0, speedScore: 0, consistencyScore: 0, coverageScore: 0, grade: "--", gradeColor: "secondary")
+    
+    static func compute(from windows: [ResponseWindow], targetLatency: TimeInterval = 3600) -> ResponseScore {
+        let valid = windows.filter(\.isValidForAnalytics)
+        guard !valid.isEmpty else { return .empty }
+        
+        let latencies = valid.map(\.latencySeconds).sorted()
+        let median = latencies[latencies.count / 2]
+        
+        // Speed score: how close to target (100 = instant, 0 = 10x target)
+        let speedRatio = min(median / targetLatency, 10)
+        let speed = max(0, Int(100 * (1 - speedRatio / 10)))
+        
+        // Consistency score: based on IQR relative to median
+        let q1 = latencies[latencies.count / 4]
+        let q3 = latencies[3 * latencies.count / 4]
+        let iqr = q3 - q1
+        let cv = iqr / max(median, 1)
+        let consistency = max(0, min(100, Int(100 * (1 - min(cv, 2) / 2))))
+        
+        // Coverage score: % of responses within target
+        let withinTarget = latencies.filter { $0 <= targetLatency }.count
+        let coverage = Int(Double(withinTarget) / Double(latencies.count) * 100)
+        
+        // Weighted overall
+        let overall = (speed * 40 + consistency * 30 + coverage * 30) / 100
+        
+        let (grade, color): (String, String) = {
+            switch overall {
+            case 90...100: return ("A+", "green")
+            case 80..<90: return ("A", "green")
+            case 70..<80: return ("B", "yellow")
+            case 60..<70: return ("C", "orange")
+            case 50..<60: return ("D", "orange")
+            default: return ("F", "red")
+            }
+        }()
+        
+        return ResponseScore(
+            overall: overall,
+            speedScore: speed,
+            consistencyScore: consistency,
+            coverageScore: coverage,
+            grade: grade,
+            gradeColor: color
+        )
+    }
+}
+
 // MARK: - Helpers
 
 func formatDuration(_ seconds: TimeInterval) -> String {
