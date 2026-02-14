@@ -90,11 +90,21 @@ final class MenuBarManager {
             let totalPending = platforms.reduce(0) { $0 + $1.pendingCount }
             let totalResponses = platforms.reduce(0) { $0 + $1.responseCount }
             
+            // Compute trend vs previous week
+            var trend: Double? = nil
+            if let currentMedian = overallMedian {
+                let prevStats = try? await imessageService.getQuickStats(days: 14)
+                if let prevMedian = prevStats?.medianLatency, prevMedian > 0 {
+                    trend = ((currentMedian - prevMedian) / prevMedian) * 100
+                }
+            }
+            
             currentStats = MenuBarStats(
                 overallMedianLatency: overallMedian,
                 totalResponses: totalResponses,
                 totalPending: totalPending,
-                platforms: platforms
+                platforms: platforms,
+                trendPercentage: trend
             )
             lastUpdate = Date()
             
@@ -131,12 +141,14 @@ struct MenuBarStats: Sendable {
     let totalResponses: Int
     let totalPending: Int
     let platforms: [PlatformStat]
+    var trendPercentage: Double?
     
     static let empty = MenuBarStats(
         overallMedianLatency: nil,
         totalResponses: 0,
         totalPending: 0,
-        platforms: []
+        platforms: [],
+        trendPercentage: nil
     )
     
     var formattedOverall: String {

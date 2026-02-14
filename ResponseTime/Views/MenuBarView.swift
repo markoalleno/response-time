@@ -115,11 +115,22 @@ struct MenuBarView: View {
                 .padding(.top, 4)
             }
             
-            // Response count
+            // Response count + trend
             if stats.totalResponses > 0 {
-                Text("\(stats.totalResponses) response\(stats.totalResponses == 1 ? "" : "s") tracked")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                HStack(spacing: 8) {
+                    Text("\(stats.totalResponses) response\(stats.totalResponses == 1 ? "" : "s") tracked")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    if let trend = stats.trendPercentage {
+                        HStack(spacing: 2) {
+                            Image(systemName: trend < -5 ? "arrow.down.right" : trend > 5 ? "arrow.up.right" : "minus")
+                            Text("\(abs(Int(trend)))% vs last week")
+                        }
+                        .font(.caption2)
+                        .foregroundColor(trend < -5 ? .green : trend > 5 ? .red : .secondary)
+                    }
+                }
             }
         }
         .padding()
