@@ -276,11 +276,14 @@ struct ContentView: View {
             if appState.isSyncing {
                 ProgressView()
                     .controlSize(.small)
+                    .accessibilityLabel("Syncing messages")
             } else {
                 Image(systemName: "arrow.triangle.2.circlepath")
+                    .accessibilityLabel("Sync messages")
             }
         }
         .disabled(appState.isSyncing)
+        .accessibilityHint(appState.lastSyncDate.map { "Last synced \(formatRelativeTime($0))" } ?? "Sync your messages now")
         #if os(macOS)
         .help(appState.lastSyncDate.map { "Last sync: \(formatRelativeTime($0))" } ?? "Sync now")
         .keyboardShortcut("r", modifiers: .command)
@@ -493,6 +496,7 @@ struct DashboardView: View {
                     Image(systemName: "lock.shield.fill")
                         .font(.system(size: 36))
                         .foregroundColor(.orange)
+                        .accessibilityHidden(true)
                     Text("Full Disk Access Required")
                         .font(.headline)
                     Text("Response Time needs permission to read your Messages database. Only timestamps are read — never message content.")
@@ -506,36 +510,45 @@ struct DashboardView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Open System Settings to grant Full Disk Access")
                     #endif
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
                 .background(Color.orange.opacity(0.1))
                 .cornerRadius(12)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Permission required: Full Disk Access")
             }
             
             Text("Response Time")
                 .font(.headline)
                 .foregroundColor(.secondary)
+                .accessibilityHidden(true)
             
             if let metrics = metrics, metrics.sampleCount > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(metrics.formattedMedian)
                         .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .accessibilityLabel("Median response time: \(metrics.formattedMedian)")
                     
                     if let trend = metrics.trendPercentage {
                         HStack(spacing: 2) {
                             Image(systemName: metrics.trendDirection.icon)
+                                .accessibilityHidden(true)
                             Text("\(abs(Int(trend)))%")
                         }
                         .font(.subheadline)
                         .foregroundColor(metrics.trendDirection.color)
+                        .accessibilityLabel("Trend: \(trend < 0 ? "improving" : "declining") by \(abs(Int(trend)))%")
                     }
                 }
+                .accessibilityElement(children: .combine)
                 
                 Text("Median \(appState.selectedTimeRange.displayName.lowercased())")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .accessibilityHidden(true)
                 
                 HStack(spacing: 16) {
                     Text("\(metrics.sampleCount) responses")
@@ -582,6 +595,8 @@ struct DashboardView: View {
         #if os(macOS)
         .frame(maxWidth: 400)
         #endif
+        .accessibilityLabel("Select time range for analytics")
+        .accessibilityValue(appState.selectedTimeRange.displayName)
     }
     
     private var responseScoreCard: some View {
@@ -1294,12 +1309,15 @@ struct ScoreBar: View {
                 }
             }
             .frame(height: 6)
+            .accessibilityHidden(true)
             
             Text("\(value)")
                 .font(.caption.monospacedDigit())
                 .foregroundColor(.secondary)
                 .frame(width: 28, alignment: .trailing)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label) score: \(value) out of 100")
     }
 }
 
@@ -1343,6 +1361,7 @@ struct PendingResponseRow: View {
                     .font(.headline)
                     .foregroundColor(.orange)
             }
+            .accessibilityHidden(true)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(pending.name)
@@ -1359,6 +1378,7 @@ struct PendingResponseRow: View {
             Text(formatDuration(wait))
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(wait > 3600 ? .red : wait > 1800 ? .orange : .yellow)
+                .accessibilityLabel("Waiting for \(formatDuration(wait))")
             
             #if os(macOS)
             Button {
