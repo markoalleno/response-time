@@ -93,14 +93,17 @@ final class iMessageSyncService: Sendable {
             var inboundCount = 0
             var outboundCount = 0
             
+            // Batch fetch existing events for this conversation (optimization)
+            let eventIds = Set(sortedEvents.map(\.id))
+            let existingDescriptor = FetchDescriptor<MessageEvent>()
+            let allExistingEvents = (try? backgroundContext.fetch(existingDescriptor)) ?? []
+            let existingIds = Set(allExistingEvents.filter { eventIds.contains($0.id) }.map(\.id))
+            
             for eventData in sortedEvents {
-                let eventId = eventData.id
-                let existingDescriptor = FetchDescriptor<MessageEvent>(
-                    predicate: #Predicate { $0.id == eventId }
-                )
-                if let _ = try? backgroundContext.fetch(existingDescriptor).first {
+                // Check against pre-fetched set (much faster than individual DB queries)
+                if existingIds.contains(eventData.id) {
                     totalEventsSkipped += 1
-                    continue  // Already exists
+                    continue
                 }
                 
                 let messageEvent = MessageEvent(
