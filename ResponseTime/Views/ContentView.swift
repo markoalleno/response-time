@@ -1107,7 +1107,34 @@ struct PendingResponseRow: View {
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(wait > 3600 ? .red : wait > 1800 ? .orange : .yellow)
             
+            #if os(macOS)
+            Button {
+                // Open Messages to this contact
+                let identifier = pending.identifier
+                if let url = URL(string: "imessage://\(identifier)") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .foregroundColor(.accentColor)
+            }
+            .buttonStyle(.plain)
+            .help("Reply in Messages")
+            .frame(width: 24)
+            #endif
+            
             Menu {
+                #if os(macOS)
+                Button {
+                    let identifier = pending.identifier
+                    if let url = URL(string: "imessage://\(identifier)") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("Reply in Messages", systemImage: "arrowshape.turn.up.right")
+                }
+                Divider()
+                #endif
                 Button { onSnooze(1) } label: {
                     Label("Snooze 1 hour", systemImage: "clock")
                 }
