@@ -376,6 +376,19 @@ struct DashboardView: View {
                 
                 // Recent activity
                 recentActivitySection
+                
+                // Last sync footer
+                if let lastSync = appState.lastSyncDate {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text("Last synced \(lastSync, style: .relative)")
+                            .font(.caption2)
+                        Spacer()
+                    }
+                    .foregroundColor(.secondary)
+                }
             }
             .padding(horizontalPadding)
             .padding(.vertical, 24)
