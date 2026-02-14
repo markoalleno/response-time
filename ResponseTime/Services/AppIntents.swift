@@ -82,13 +82,31 @@ struct SetResponseGoalIntent: AppIntent {
 
 struct GetGoalProgressIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Goal Progress"
-    static let description: IntentDescription = IntentDescription("Check your response goal progress")
+    static let description: IntentDescription = IntentDescription("Check your response goal progress and score")
     
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        // Simulated progress
-        let progress = 78
-        return .result(dialog: "You're \(progress)% on target with your response goals this week.")
+        let connector = iMessageConnector()
+        let responseTimes = try await connector.getRecentResponseTimes(days: 7)
+        
+        // Create temporary ResponseWindows for score computation
+        let latencies = responseTimes.map(\.latencySeconds)
+        guard !latencies.isEmpty else {
+            return .result(dialog: "No response data this week. Sync your messages first.")
+        }
+        
+        let sorted = latencies.sorted()
+        let median = sorted[sorted.count / 2]
+        let target: TimeInterval = 3600
+        let withinTarget = sorted.filter { $0 <= target }.count
+        let progress = Int(Double(withinTarget) / Double(sorted.count) * 100)
+        
+        // Compute quick grade
+        let speedRatio = min(median / target, 10)
+        let speed = max(0, Int(100 * (1 - speedRatio / 10)))
+        let grade = speed >= 90 ? "A+" : speed >= 80 ? "A" : speed >= 70 ? "B" : speed >= 60 ? "C" : "D"
+        
+        return .result(dialog: "Your response grade is \(grade). \(progress)% of responses within your 1-hour target this week. Median: \(formatDuration(median)).")
     }
 }
 
