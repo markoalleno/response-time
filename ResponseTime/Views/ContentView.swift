@@ -497,6 +497,13 @@ struct DashboardView: View {
                 Text("Median \(appState.selectedTimeRange.displayName.lowercased())")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                
+                // Last response time
+                if let lastResponse = recentResponses.first {
+                    Text("Last response: \(lastResponse.computedAt, style: .relative)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             } else {
                 Text("--")
                     .font(.system(size: 48, weight: .bold, design: .rounded))

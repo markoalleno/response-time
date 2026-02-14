@@ -9,9 +9,13 @@ actor iMessageConnector {
     static let coreDataEpoch: TimeInterval = 978307200
     
     private var dbPath: String {
+        #if os(macOS)
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Messages/chat.db")
             .path
+        #else
+        "" // iMessage not available on iOS
+        #endif
     }
     
     // MARK: - Database Connection
