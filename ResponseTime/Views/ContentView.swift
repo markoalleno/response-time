@@ -985,6 +985,9 @@ struct DashboardView: View {
             Text("No data yet")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            Text("Sync to start tracking")
+                .font(.caption2)
+                .foregroundColor(.secondary.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
