@@ -14,6 +14,7 @@ struct AnalyticsView: View {
     
     enum ChartType: String, CaseIterable, Identifiable {
         case trend = "Trend"
+        case weekly = "Weekly"
         case heatmap = "Heatmap"
         case distribution = "Distribution"
         case byPlatform = "By Platform"
@@ -23,6 +24,7 @@ struct AnalyticsView: View {
         var icon: String {
             switch self {
             case .trend: return "chart.line.uptrend.xyaxis"
+            case .weekly: return "calendar"
             case .heatmap: return "square.grid.3x3.fill"
             case .distribution: return "chart.bar.fill"
             case .byPlatform: return "chart.pie.fill"
@@ -134,6 +136,8 @@ struct AnalyticsView: View {
         switch selectedChart {
         case .trend:
             trendChart
+        case .weekly:
+            weeklyPatternChart
         case .heatmap:
             heatmapChart
         case .distribution:
@@ -179,6 +183,48 @@ struct AnalyticsView: View {
                     AxisMarks(values: .stride(by: .day)) { _ in
                         AxisGridLine()
                         AxisValueLabel(format: .dateTime.weekday(.abbreviated))
+                    }
+                }
+            }
+        }
+    }
+    
+    private var weeklyPatternChart: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Response Time by Day of Week")
+                .font(.headline)
+            
+            let data = WeeklyPatternChart.generateWeeklyPattern(from: responseWindows.filter(\.isValidForAnalytics))
+            if data.allSatisfy({ $0.count == 0 }) {
+                emptyChartState
+            } else {
+                Chart {
+                    ForEach(data.filter { $0.count > 0 }, id: \.day) { item in
+                        BarMark(
+                            x: .value("Day", item.day),
+                            y: .value("Minutes", item.median / 60)
+                        )
+                        .foregroundStyle(
+                            (item.day == "Sun" || item.day == "Sat") ? Color.orange : Color.accentColor
+                        )
+                        .cornerRadius(4)
+                        .annotation(position: .top) {
+                            Text("\(item.count)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .chartYAxisLabel("Minutes")
+                
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.accentColor).frame(width: 8, height: 8)
+                        Text("Weekday").font(.caption).foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.orange).frame(width: 8, height: 8)
+                        Text("Weekend").font(.caption).foregroundColor(.secondary)
                     }
                 }
             }
