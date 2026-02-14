@@ -618,28 +618,33 @@ struct DashboardView: View {
             let withinTarget = valid.filter { $0.latencySeconds <= defaultTarget }
             let progress = valid.isEmpty ? 0.0 : Double(withinTarget.count) / Double(valid.count)
             
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Target")
-                    Spacer()
-                    Text(formatDuration(defaultTarget))
+            HStack(spacing: 16) {
+                GoalProgressRing(progress: progress, target: formatDuration(defaultTarget), lineWidth: 8)
+                    .frame(width: 70, height: 70)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Target")
+                        Spacer()
+                        Text(formatDuration(defaultTarget))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.secondary.opacity(0.2))
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(progress >= 0.8 ? Color.green : progress >= 0.6 ? Color.yellow : Color.red)
+                                .frame(width: geo.size.width * progress)
+                        }
+                    }
+                    .frame(height: 8)
+                    
+                    Text(valid.isEmpty ? "No data yet" : "\(Int(progress * 100))% within target")
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.2))
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(progress >= 0.8 ? Color.green : progress >= 0.6 ? Color.yellow : Color.red)
-                            .frame(width: geo.size.width * progress)
-                    }
-                }
-                .frame(height: 8)
-                
-                Text(valid.isEmpty ? "No data yet" : "\(Int(progress * 100))% of responses within target")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
     }
