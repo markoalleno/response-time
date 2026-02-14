@@ -212,6 +212,14 @@ struct GoalsView: View {
     @ViewBuilder
     private var suggestedGoalCards: some View {
         SuggestedGoalCard(
+            platform: .imessage,
+            target: "30 minutes",
+            description: "Quick reply to personal messages"
+        ) {
+            addSuggestedGoal(.imessage, 1800)
+        }
+        
+        SuggestedGoalCard(
             platform: .gmail,
             target: "1 hour",
             description: "Industry average for email"
@@ -226,9 +234,17 @@ struct GoalsView: View {
         ) {
             addSuggestedGoal(.slack, 900)
         }
+        
+        SuggestedGoalCard(
+            platform: nil,
+            target: "2 hours",
+            description: "Reasonable target across all platforms"
+        ) {
+            addSuggestedGoal(nil, 7200)
+        }
     }
     
-    private func addSuggestedGoal(_ platform: Platform, _ seconds: TimeInterval) {
+    private func addSuggestedGoal(_ platform: Platform?, _ seconds: TimeInterval) {
         let goal = ResponseGoal(
             platform: platform,
             targetLatencySeconds: seconds
@@ -481,7 +497,7 @@ struct GoalCard: View {
 // MARK: - Suggested Goal Card
 
 struct SuggestedGoalCard: View {
-    let platform: Platform
+    let platform: Platform?
     let target: String
     let description: String
     let onAdd: () -> Void
@@ -497,12 +513,12 @@ struct SuggestedGoalCard: View {
     var body: some View {
         Button(action: onAdd) {
             HStack(spacing: 12) {
-                Image(systemName: platform.icon)
-                    .foregroundColor(platform.color)
+                Image(systemName: platform?.icon ?? "target")
+                    .foregroundColor(platform?.color ?? .accentColor)
                     .frame(width: 24)
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(platform.displayName): \(target)")
+                    Text("\(platform?.displayName ?? "All Platforms"): \(target)")
                         .font(.subheadline.bold())
                         .foregroundColor(.primary)
                     Text(description)
