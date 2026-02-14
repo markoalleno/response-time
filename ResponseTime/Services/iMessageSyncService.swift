@@ -122,18 +122,26 @@ final class iMessageSyncService {
                         continue
                     }
                     
-                    // Skip if this inbound already has a response window
+                    // Skip if this inbound already has a response window (check both relationship and database)
                     if inbound.responseWindow != nil {
                         lastInbound = nil
                         continue
                     }
                     
-                    // Compute confidence
-                    var confidence: Float = 1.0
-                    let hours = latency / 3600
-                    if hours > 72 { confidence = 0.4 }
-                    else if hours > 48 { confidence = 0.6 }
-                    else if hours > 24 { confidence = 0.8 }
+                    // Double-check database for existing window (prevents duplicates on re-sync)
+                    let inboundId = inbound.id
+                    let existingWindowCheck = FetchDescriptor<ResponseWindow>(
+                        predicate: #Predicate { window in
+                            window.inboundEvent?.id == inboundId
+                        }
+                    )
+                    if let existingWindows = try? modelContext.fetch(existingWindowCheck), !existingWindows.isEmpty {
+                        lastInbound = nil
+                        continue
+                    }
+                    
+                    // Compute confidence using shared helper
+                    let confidence = computeResponseConfidence(latencySeconds: latency)
                     
                     let window = ResponseWindow(
                         inboundEvent: inbound,

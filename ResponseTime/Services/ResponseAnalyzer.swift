@@ -67,24 +67,9 @@ class ResponseAnalyzer {
     }
     
     private func computeConfidence(inbound: MessageEvent, outbound: MessageEvent) -> Float {
-        // Higher confidence for:
-        // - Shorter time gaps
-        // - Same thread/message ID chain
-        // - Same participants
-        
-        var confidence: Float = 1.0
-        
-        // Time penalty: reduce confidence for longer gaps
-        let hours = outbound.timestamp.timeIntervalSince(inbound.timestamp) / 3600
-        if hours > 24 {
-            confidence *= 0.8
-        } else if hours > 48 {
-            confidence *= 0.6
-        } else if hours > 72 {
-            confidence *= 0.4
-        }
-        
-        return confidence
+        // Use shared confidence calculation
+        let latency = outbound.timestamp.timeIntervalSince(inbound.timestamp)
+        return computeResponseConfidence(latencySeconds: latency)
     }
     
     private func determineMatchingMethod(inbound: MessageEvent, outbound: MessageEvent) -> ThreadingMethod {

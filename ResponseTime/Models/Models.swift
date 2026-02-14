@@ -538,3 +538,19 @@ func formatDurationShort(_ seconds: TimeInterval) -> String {
         return "\(Int(seconds / 86400))d"
     }
 }
+
+func computeResponseConfidence(latencySeconds: TimeInterval) -> Float {
+    // Higher confidence for shorter time gaps
+    // Reduces confidence for longer gaps (more uncertainty about match)
+    let hours = latencySeconds / 3600
+    
+    if hours > 72 {
+        return 0.4  // >3 days
+    } else if hours > 48 {
+        return 0.6  // >2 days
+    } else if hours > 24 {
+        return 0.8  // >1 day
+    } else {
+        return 1.0  // <1 day
+    }
+}
