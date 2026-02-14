@@ -56,7 +56,7 @@ struct GoalsView: View {
                     emptyState
                 } else {
                     ForEach(goals) { goal in
-                        GoalCard(goal: goal) {
+                        GoalCard(goal: goal, responseWindows: responseWindows) {
                             deleteGoal(goal)
                         }
                     }
@@ -86,8 +86,22 @@ struct GoalsView: View {
         #endif
     }
     
+    @Query(sort: \ResponseWindow.computedAt, order: .reverse)
+    private var responseWindows: [ResponseWindow]
+    
     private var overallProgressCard: some View {
-        VStack(spacing: 16) {
+        let valid = responseWindows.filter(\.isValidForAnalytics)
+        // Use the strictest goal target, or default to 1 hour
+        let target = goals.filter(\.isEnabled).map(\.targetLatencySeconds).min() ?? 3600
+        let withinTarget = valid.filter { $0.latencySeconds <= target }
+        let close = valid.filter { $0.latencySeconds > target && $0.latencySeconds <= target * 1.5 }
+        let missed = valid.filter { $0.latencySeconds > target * 1.5 }
+        let progress = valid.isEmpty ? 0.0 : Double(withinTarget.count) / Double(valid.count)
+        let closePercent = valid.isEmpty ? 0 : Int(Double(close.count) / Double(valid.count) * 100)
+        let missedPercent = valid.isEmpty ? 0 : Int(Double(missed.count) / Double(valid.count) * 100)
+        let progressPercent = Int(progress * 100)
+        
+        return VStack(spacing: 16) {
             HStack {
                 VStack(alignment: .leading) {
                     Text("Overall Progress")
@@ -100,10 +114,10 @@ struct GoalsView: View {
                 Spacer()
                 
                 VStack(alignment: .trailing) {
-                    Text("78%")
+                    Text(valid.isEmpty ? "--" : "\(progressPercent)%")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(.green)
-                    Text("responses within target")
+                        .foregroundColor(progress >= 0.8 ? .green : progress >= 0.6 ? .yellow : .red)
+                    Text(valid.isEmpty ? "no data yet" : "responses within target")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -117,16 +131,16 @@ struct GoalsView: View {
                     
                     RoundedRectangle(cornerRadius: 6)
                         .fill(progressGradient)
-                        .frame(width: geo.size.width * 0.78)
+                        .frame(width: geo.size.width * progress)
                 }
             }
             .frame(height: 12)
             
             // Legend
             HStack(spacing: 16) {
-                LegendItem(color: .green, label: "Within target (78%)")
-                LegendItem(color: .yellow, label: "Close (12%)")
-                LegendItem(color: .red, label: "Missed (10%)")
+                LegendItem(color: .green, label: "Within target (\(progressPercent)%)")
+                LegendItem(color: .yellow, label: "Close (\(closePercent)%)")
+                LegendItem(color: .red, label: "Missed (\(missedPercent)%)")
             }
             .font(.caption)
         }
@@ -228,13 +242,21 @@ struct GoalsView: View {
 
 struct GoalCard: View {
     let goal: ResponseGoal
+    let responseWindows: [ResponseWindow]
     let onDelete: () -> Void
     
     @State private var showingEdit = false
     @State private var showingDeleteConfirm = false
     
-    // Simulated progress (would come from actual analytics)
-    private var progress: Double { Double.random(in: 0.5...0.95) }
+    private var progress: Double {
+        var valid = responseWindows.filter(\.isValidForAnalytics)
+        if let platform = goal.platform {
+            valid = valid.filter { $0.inboundEvent?.conversation?.sourceAccount?.platform == platform }
+        }
+        guard !valid.isEmpty else { return 0 }
+        let withinTarget = valid.filter { $0.latencySeconds <= goal.targetLatencySeconds }
+        return Double(withinTarget.count) / Double(valid.count)
+    }
     private var progressColor: Color {
         if progress >= 0.8 { return .green }
         if progress >= 0.6 { return .yellow }

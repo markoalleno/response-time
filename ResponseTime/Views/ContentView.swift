@@ -407,14 +407,21 @@ struct DashboardView: View {
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(accounts) { account in
+                        let platformWindows = recentResponses.filter {
+                            $0.inboundEvent?.conversation?.sourceAccount?.platform == account.platform && $0.isValidForAnalytics
+                        }
+                        let latencies = platformWindows.map(\.latencySeconds).sorted()
+                        let median = latencies.isEmpty ? nil : latencies[latencies.count / 2]
+                        
                         HStack {
                             Image(systemName: account.platform.icon)
                                 .foregroundColor(account.platform.color)
                                 .frame(width: 20)
                             Text(account.platform.displayName)
                             Spacer()
-                            Text("--")
-                                .foregroundColor(.secondary)
+                            Text(median.map { formatDuration($0) } ?? "--")
+                                .font(.system(.callout, design: .monospaced))
+                                .foregroundColor(median.map { $0 < 3600 ? .green : .orange } ?? .secondary)
                         }
                         .font(.callout)
                     }
@@ -425,11 +432,16 @@ struct DashboardView: View {
     
     private var goalsCard: some View {
         DashboardCard(title: "Goals", icon: "target") {
+            let valid = recentResponses.filter(\.isValidForAnalytics)
+            let defaultTarget: TimeInterval = 3600 // 1 hour
+            let withinTarget = valid.filter { $0.latencySeconds <= defaultTarget }
+            let progress = valid.isEmpty ? 0.0 : Double(withinTarget.count) / Double(valid.count)
+            
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Target")
                     Spacer()
-                    Text("1h")
+                    Text(formatDuration(defaultTarget))
                         .foregroundColor(.secondary)
                 }
                 
@@ -438,13 +450,13 @@ struct DashboardView: View {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.secondary.opacity(0.2))
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.green)
-                            .frame(width: geo.size.width * 0.75)
+                            .fill(progress >= 0.8 ? Color.green : progress >= 0.6 ? Color.yellow : Color.red)
+                            .frame(width: geo.size.width * progress)
                     }
                 }
                 .frame(height: 8)
                 
-                Text("75% of responses within target")
+                Text(valid.isEmpty ? "No data yet" : "\(Int(progress * 100))% of responses within target")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
