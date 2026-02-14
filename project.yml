@@ -187,6 +187,21 @@ targets:
       - target: ResponseTime-iOS
         embed: false
 
+  ResponseTimeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - ResponseTimeTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime.tests
+        PRODUCT_NAME: ResponseTimeTests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Response Time.app/Contents/MacOS/Response Time"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: true
+    dependencies:
+      - target: ResponseTime-macOS
+
 schemes:
   ResponseTime-macOS:
     build:
@@ -195,6 +210,10 @@ schemes:
         ResponseTimeWidget-macOS: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - ResponseTimeTests
     profile:
       config: Release
     analyze:
