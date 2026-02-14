@@ -386,9 +386,17 @@ struct DashboardView: View {
                 }
                 #endif
                 
-                // Velocity metric
+                // Percentile + Velocity row
                 if recentResponses.count >= 5 {
+                    #if os(macOS)
+                    HStack(spacing: 16) {
+                        percentileCard
+                        velocityCard
+                    }
+                    #else
+                    percentileCard
                     velocityCard
+                    #endif
                 }
                 
                 // Pending responses (actionable)
@@ -677,6 +685,55 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+    
+    private var percentileCard: some View {
+        let valid = recentResponses.filter(\.isValidForAnalytics)
+        let latencies = valid.map(\.latencySeconds).sorted()
+        let p50 = latencies.isEmpty ? 0 : latencies[latencies.count / 2]
+        let p90 = latencies.isEmpty ? 0 : latencies[min(Int(Double(latencies.count) * 0.9), latencies.count - 1)]
+        let p10 = latencies.isEmpty ? 0 : latencies[max(Int(Double(latencies.count) * 0.1), 0)]
+        
+        return HStack(spacing: 16) {
+            Image(systemName: "chart.bar.xaxis.ascending")
+                .font(.title2)
+                .foregroundColor(.purple)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Percentiles")
+                    .font(.subheadline.bold())
+                HStack(spacing: 12) {
+                    VStack {
+                        Text(formatDurationShort(p10))
+                            .font(.caption.bold())
+                            .foregroundColor(.green)
+                        Text("10th")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    VStack {
+                        Text(formatDurationShort(p50))
+                            .font(.caption.bold())
+                        Text("50th")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    VStack {
+                        Text(formatDurationShort(p90))
+                            .font(.caption.bold())
+                            .foregroundColor(.orange)
+                        Text("90th")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
     }
     
     private var velocityCard: some View {
