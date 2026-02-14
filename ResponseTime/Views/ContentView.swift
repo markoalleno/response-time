@@ -105,6 +105,9 @@ struct ContentView: View {
             OnboardingView()
                 .environment(appState)
         }
+        .background {
+            KeyboardShortcutView(selectedTab: $selectedTab)
+        }
     }
     
     private var sidebarContent: some View {
@@ -803,6 +806,8 @@ struct DashboardCard<Content: View>: View {
         .padding()
         .background(cardBackgroundColor)
         .cornerRadius(12)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -820,6 +825,8 @@ struct MetricRow: View {
             Text(value)
                 .font(.system(.body, design: .monospaced))
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 
@@ -866,6 +873,29 @@ struct TrendChart: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Keyboard Shortcuts
+
+struct KeyboardShortcutView: View {
+    @Binding var selectedTab: ContentView.Tab
+    
+    var body: some View {
+        Group {
+            Button("") { selectedTab = .dashboard }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("") { selectedTab = .analytics }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("") { selectedTab = .digest }
+                .keyboardShortcut("3", modifiers: .command)
+            Button("") { selectedTab = .goals }
+                .keyboardShortcut("4", modifiers: .command)
+            Button("") { selectedTab = .contacts }
+                .keyboardShortcut("5", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
     }
 }
 

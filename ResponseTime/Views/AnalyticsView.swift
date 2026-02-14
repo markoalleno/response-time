@@ -612,6 +612,8 @@ struct StatCard: View {
         .padding()
         .background(cardBackgroundColor)
         .cornerRadius(12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
     }
 }
 
