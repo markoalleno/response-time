@@ -279,6 +279,28 @@ struct SyncNowIntent: AppIntent {
     }
 }
 
+struct GetWeeklySummaryIntent: AppIntent {
+    static let title: LocalizedStringResource = "Get Weekly Summary"
+    static let description: IntentDescription = IntentDescription("Get a summary of your response time performance this week")
+    
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let connector = iMessageConnector()
+        let stats = try await connector.getQuickStats(days: 7)
+        
+        let median = stats.formattedMedian
+        let count = stats.responseCount
+        let pending = stats.pendingResponses
+        
+        var summary = "This week: \(count) responses, \(median) median response time."
+        if pending > 0 {
+            summary += " \(pending) pending."
+        }
+        
+        return .result(dialog: "\(summary)")
+    }
+}
+
 // MARK: - App Shortcuts Provider
 
 struct ResponseTimeShortcuts: AppShortcutsProvider {
@@ -323,6 +345,16 @@ struct ResponseTimeShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Sync Now",
             systemImageName: "arrow.triangle.2.circlepath"
+        )
+        
+        AppShortcut(
+            intent: GetWeeklySummaryIntent(),
+            phrases: [
+                "Get my weekly summary from \(.applicationName)",
+                "How was my response time this week in \(.applicationName)"
+            ],
+            shortTitle: "Weekly Summary",
+            systemImageName: "calendar.badge.clock"
         )
     }
 }
