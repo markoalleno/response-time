@@ -36,24 +36,22 @@ class OAuthService {
     // MARK: - Gmail OAuth
     
     func authenticateGmail() async throws -> OAuthTokens {
+        guard OAuthConfig.isGmailConfigured else {
+            throw OAuthError.authFailed("Gmail OAuth not configured. See docs/GMAIL_OAUTH_SETUP.md")
+        }
+        
         isAuthenticating = true
         defer { isAuthenticating = false }
-        
-        // Gmail OAuth configuration
-        // In production, these would come from Google Cloud Console
-        let clientId = "YOUR_CLIENT_ID.apps.googleusercontent.com"
-        let redirectUri = "com.allens.responsetime:/oauth2callback"
-        let scope = "https://www.googleapis.com/auth/gmail.readonly"
         
         let codeVerifier = generateCodeVerifier()
         let codeChallenge = generateCodeChallenge(from: codeVerifier)
         
-        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+        var components = URLComponents(string: OAuthConfig.gmailAuthEndpoint)!
         components.queryItems = [
-            URLQueryItem(name: "client_id", value: clientId),
-            URLQueryItem(name: "redirect_uri", value: redirectUri),
+            URLQueryItem(name: "client_id", value: OAuthConfig.gmailClientId),
+            URLQueryItem(name: "redirect_uri", value: OAuthConfig.gmailRedirectUri),
             URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: scope),
+            URLQueryItem(name: "scope", value: OAuthConfig.gmailScope),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "access_type", value: "offline"),
@@ -73,16 +71,63 @@ class OAuthService {
         }
         
         // Exchange code for tokens
-        let tokens = try await exchangeCodeForTokens(
+        let tokens = try await exchangeCodeForGmailTokens(
             code: code,
-            codeVerifier: codeVerifier,
-            platform: .gmail
+            codeVerifier: codeVerifier
         )
         
         // Store tokens securely
         try storeTokens(tokens, for: .gmail)
         
         return tokens
+    }
+    
+    /// Exchange authorization code for access/refresh tokens
+    private func exchangeCodeForGmailTokens(code: String, codeVerifier: String) async throws -> OAuthTokens {
+        var request = URLRequest(url: URL(string: OAuthConfig.gmailTokenEndpoint)!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "client_id", value: OAuthConfig.gmailClientId),
+            URLQueryItem(name: "code", value: code),
+            URLQueryItem(name: "code_verifier", value: codeVerifier),
+            URLQueryItem(name: "grant_type", value: "authorization_code"),
+            URLQueryItem(name: "redirect_uri", value: OAuthConfig.gmailRedirectUri)
+        ]
+        
+        request.httpBody = components.query?.data(using: .utf8)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OAuthError.networkError
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            if let errorString = String(data: data, encoding: .utf8) {
+                throw OAuthError.authFailed("Token exchange failed: \(errorString)")
+            }
+            throw OAuthError.authFailed("Token exchange failed with status \(httpResponse.statusCode)")
+        }
+        
+        struct TokenResponse: Codable {
+            let access_token: String
+            let refresh_token: String?
+            let expires_in: Int
+            let scope: String?
+            let token_type: String
+        }
+        
+        let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+        
+        return OAuthTokens(
+            accessToken: tokenResponse.access_token,
+            refreshToken: tokenResponse.refresh_token,
+            expiresAt: Date().addingTimeInterval(TimeInterval(tokenResponse.expires_in)),
+            scope: tokenResponse.scope
+        )
     }
     
     // MARK: - Microsoft OAuth
@@ -185,17 +230,96 @@ class OAuthService {
             throw OAuthError.tokenRetrievalFailed
         }
         
-        // Perform token refresh based on platform
-        // This is a placeholder - real implementation would call the appropriate endpoint
-        let newTokens = OAuthTokens(
-            accessToken: "new_access_token",
-            refreshToken: refreshToken,
-            expiresAt: Date().addingTimeInterval(3600),
-            scope: current.scope
-        )
+        let newTokens: OAuthTokens
+        
+        switch platform {
+        case .gmail:
+            newTokens = try await refreshGmailTokens(refreshToken: refreshToken)
+        case .outlook:
+            newTokens = try await refreshMicrosoftTokens(refreshToken: refreshToken)
+        case .slack:
+            // Slack tokens don't typically need refresh - they're long-lived
+            return current
+        case .imessage:
+            // iMessage doesn't use OAuth
+            return current
+        }
         
         try storeTokens(newTokens, for: platform)
         return newTokens
+    }
+    
+    private func refreshGmailTokens(refreshToken: String) async throws -> OAuthTokens {
+        var request = URLRequest(url: URL(string: OAuthConfig.gmailTokenEndpoint)!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "client_id", value: OAuthConfig.gmailClientId),
+            URLQueryItem(name: "refresh_token", value: refreshToken),
+            URLQueryItem(name: "grant_type", value: "refresh_token")
+        ]
+        
+        request.httpBody = components.query?.data(using: .utf8)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw OAuthError.authFailed("Token refresh failed")
+        }
+        
+        struct RefreshResponse: Codable {
+            let access_token: String
+            let expires_in: Int
+            let scope: String?
+        }
+        
+        let refreshResponse = try JSONDecoder().decode(RefreshResponse.self, from: data)
+        
+        return OAuthTokens(
+            accessToken: refreshResponse.access_token,
+            refreshToken: refreshToken, // Refresh token stays the same
+            expiresAt: Date().addingTimeInterval(TimeInterval(refreshResponse.expires_in)),
+            scope: refreshResponse.scope
+        )
+    }
+    
+    private func refreshMicrosoftTokens(refreshToken: String) async throws -> OAuthTokens {
+        var request = URLRequest(url: URL(string: OAuthConfig.microsoftTokenEndpoint)!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "client_id", value: OAuthConfig.microsoftClientId),
+            URLQueryItem(name: "refresh_token", value: refreshToken),
+            URLQueryItem(name: "grant_type", value: "refresh_token"),
+            URLQueryItem(name: "scope", value: OAuthConfig.microsoftScope)
+        ]
+        
+        request.httpBody = components.query?.data(using: .utf8)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw OAuthError.authFailed("Token refresh failed")
+        }
+        
+        struct RefreshResponse: Codable {
+            let access_token: String
+            let refresh_token: String?
+            let expires_in: Int
+        }
+        
+        let refreshResponse = try JSONDecoder().decode(RefreshResponse.self, from: data)
+        
+        return OAuthTokens(
+            accessToken: refreshResponse.access_token,
+            refreshToken: refreshResponse.refresh_token ?? refreshToken,
+            expiresAt: Date().addingTimeInterval(TimeInterval(refreshResponse.expires_in)),
+            scope: OAuthConfig.microsoftScope
+        )
     }
     
     func revokeTokens(for platform: Platform) async throws {
