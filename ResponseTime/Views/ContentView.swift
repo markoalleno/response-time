@@ -242,8 +242,37 @@ struct ContentView: View {
             // Sync iMessage data to SwiftData (creates MessageEvents + ResponseWindows)
             try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
             appState.lastSyncDate = Date()
+            
+            // Check for threshold notifications
+            await checkThresholdNotifications()
         } catch {
             appState.error = .syncFailed(error.localizedDescription)
+        }
+    }
+    
+    private func checkThresholdNotifications() async {
+        guard UserDefaults.standard.bool(forKey: "notificationsEnabled"),
+              UserDefaults.standard.bool(forKey: "thresholdNotificationsEnabled") else { return }
+        
+        let thresholdMinutes = UserDefaults.standard.integer(forKey: "thresholdMinutes")
+        let threshold = TimeInterval(max(thresholdMinutes, 60) * 60)
+        
+        // Find pending conversations that exceed threshold
+        let connector = iMessageConnector()
+        guard let conversations = try? await connector.fetchAllConversations(days: 7) else { return }
+        
+        for conv in conversations where conv.pendingResponse && !conv.isGroupChat {
+            guard let lastDate = conv.lastMessageDate else { continue }
+            let waitTime = Date().timeIntervalSince(lastDate)
+            
+            if waitTime > threshold {
+                let name = conv.participants.first?.displayIdentifier ?? conv.chatIdentifier
+                try? await NotificationService.shared.notifyThresholdExceeded(
+                    participant: name,
+                    currentLatency: waitTime,
+                    threshold: threshold
+                )
+            }
         }
     }
     
