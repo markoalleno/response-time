@@ -320,9 +320,28 @@ struct AnalyticsView: View {
             Text("Response Time by Day & Hour")
                 .font(.headline)
             
-            Text("Darker colors indicate faster response times")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack(spacing: 12) {
+                HStack(spacing: 3) {
+                    Circle().fill(.green).frame(width: 8, height: 8)
+                    Text("<30m").font(.caption2).foregroundColor(.secondary)
+                }
+                HStack(spacing: 3) {
+                    Circle().fill(.blue).frame(width: 8, height: 8)
+                    Text("30m-1h").font(.caption2).foregroundColor(.secondary)
+                }
+                HStack(spacing: 3) {
+                    Circle().fill(.yellow).frame(width: 8, height: 8)
+                    Text("1-2h").font(.caption2).foregroundColor(.secondary)
+                }
+                HStack(spacing: 3) {
+                    Circle().fill(.orange).frame(width: 8, height: 8)
+                    Text("2-4h").font(.caption2).foregroundColor(.secondary)
+                }
+                HStack(spacing: 3) {
+                    Circle().fill(.red).frame(width: 8, height: 8)
+                    Text(">4h").font(.caption2).foregroundColor(.secondary)
+                }
+            }
             
             if responseWindows.isEmpty {
                 emptyChartState
@@ -364,29 +383,34 @@ struct AnalyticsView: View {
     }
     
     private func heatmapColor(day: Int, hour: Int) -> Color {
-        // Use real data from response windows
         let matching = responseWindows.filter { window in
             window.dayOfWeek == (day + 1) && window.hourOfDay == hour && window.isValidForAnalytics
         }
         
         guard !matching.isEmpty else {
-            return Color.secondary.opacity(0.1)
+            return Color.secondary.opacity(0.08)
         }
         
         let latencies = matching.map(\.latencySeconds)
         let median = latencies.sorted()[latencies.count / 2]
+        let count = matching.count
+        
+        // Intensity based on sample count (more data = more opaque)
+        let intensity = min(Double(count) / 5.0, 1.0) * 0.3 + 0.4
         
         // Color based on median: green = fast, red = slow
-        if median < 1800 {       // < 30 min
-            return Color.green.opacity(0.7)
+        if median < 900 {        // < 15 min
+            return Color.green.opacity(intensity)
+        } else if median < 1800 { // < 30 min
+            return Color.green.opacity(intensity * 0.7)
         } else if median < 3600 { // < 1 hour
-            return Color.green.opacity(0.4)
+            return Color.blue.opacity(intensity * 0.7)
         } else if median < 7200 { // < 2 hours
-            return Color.yellow.opacity(0.5)
+            return Color.yellow.opacity(intensity)
         } else if median < 14400 { // < 4 hours
-            return Color.orange.opacity(0.5)
+            return Color.orange.opacity(intensity)
         } else {
-            return Color.red.opacity(0.5)
+            return Color.red.opacity(intensity)
         }
     }
     
