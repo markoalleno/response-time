@@ -12,6 +12,13 @@ struct ContactsView: View {
     @State private var sortBy: SortOption = .responseTime
     @State private var selectedContact: iMessageConnector.ContactStats?
     @State private var showGroups = false
+    @State private var serviceFilter: ServiceFilter = .all
+    
+    enum ServiceFilter: String, CaseIterable {
+        case all = "All"
+        case imessage = "iMessage"
+        case sms = "SMS"
+    }
     
     // Real data from iMessage
     @State private var contacts: [iMessageConnector.ContactStats] = []
@@ -88,6 +95,16 @@ struct ContactsView: View {
                         .padding(8)
                         .background(cardBackgroundColor)
                         .cornerRadius(8)
+                        
+                        Picker("Service", selection: $serviceFilter) {
+                            ForEach(ServiceFilter.allCases, id: \.self) { filter in
+                                Text(filter.rawValue).tag(filter)
+                            }
+                        }
+                        #if os(macOS)
+                        .pickerStyle(.menu)
+                        #endif
+                        .frame(width: 100)
                         
                         Picker("Sort", selection: $sortBy) {
                             ForEach(SortOption.allCases, id: \.self) { option in
@@ -349,6 +366,13 @@ struct ContactsView: View {
     
     private var filteredContacts: [iMessageConnector.ContactStats] {
         var result = contacts
+        
+        // Filter by service
+        switch serviceFilter {
+        case .all: break
+        case .imessage: result = result.filter { $0.service != "SMS" }
+        case .sms: result = result.filter { $0.service == "SMS" }
+        }
         
         if !searchText.isEmpty {
             result = result.filter {
