@@ -427,6 +427,9 @@ struct SettingsView: View {
         ExportService.shared.saveExport(result)
     }
     
+    @Query(sort: \ResponseWindow.computedAt, order: .reverse)
+    private var allWindows: [ResponseWindow]
+    
     private var aboutView: some View {
         VStack(spacing: 24) {
             Image(systemName: "clock.arrow.circlepath")
@@ -436,25 +439,54 @@ struct SettingsView: View {
             VStack(spacing: 4) {
                 Text("Response Time")
                     .font(.title.bold())
-                Text("Version 1.0")
+                
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+                Text("Version \(version) (\(build))")
                     .foregroundColor(.secondary)
             }
             
-            Text("Privacy-first response time analytics for your communications.")
+            Text("Privacy-first response time analytics.\nAll data stays on your device.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
             
             Divider()
             
+            // Quick stats summary
             VStack(spacing: 8) {
-                Link("Privacy Policy", destination: URL(string: "https://example.com/privacy")!)
-                Link("Terms of Service", destination: URL(string: "https://example.com/terms")!)
-                Link("Support", destination: URL(string: "mailto:support@example.com")!)
+                let valid = allWindows.filter(\.isValidForAnalytics)
+                HStack(spacing: 24) {
+                    VStack {
+                        Text("\(valid.count)")
+                            .font(.title2.bold())
+                        Text("Responses tracked")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if !valid.isEmpty {
+                        let latencies = valid.map(\.latencySeconds).sorted()
+                        VStack {
+                            Text(formatDuration(latencies[latencies.count / 2]))
+                                .font(.title2.bold())
+                            Text("Overall median")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            Divider()
+            
+            VStack(spacing: 8) {
+                Link("GitHub Repository", destination: URL(string: "https://github.com/markoalleno/response-time")!)
+                Link("Report an Issue", destination: URL(string: "https://github.com/markoalleno/response-time/issues")!)
             }
             
             Spacer()
             
-            Text("© 2025 Mark Allen")
+            Text("© 2025 Mark Allen. Built with Swift & SwiftUI.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
