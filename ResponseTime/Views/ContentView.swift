@@ -638,7 +638,7 @@ struct DashboardView: View {
                         }
                         
                         VStack(alignment: .leading) {
-                            Text(response.inboundEvent?.participantEmail ?? "Unknown")
+                            Text(response.inboundEvent?.conversation?.subject ?? response.inboundEvent?.participantEmail ?? "Unknown")
                                 .lineLimit(1)
                             Text(response.computedAt, style: .relative)
                                 .font(.caption)

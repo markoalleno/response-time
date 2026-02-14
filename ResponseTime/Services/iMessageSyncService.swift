@@ -19,6 +19,9 @@ final class iMessageSyncService {
         // Fetch raw messages from chat.db via the connector
         let syncResult = try await connector.sync(since: sourceAccount.syncCheckpoint, limit: 10000)
         
+        // Pre-load contact names for resolution
+        _ = await ContactResolver.shared.requestAccessAndLoad()
+        
         guard !syncResult.messageEvents.isEmpty else {
             sourceAccount.syncCheckpoint = Date()
             sourceAccount.updatedAt = Date()
@@ -42,16 +45,21 @@ final class iMessageSyncService {
                 sourceAccount: sourceAccount,
                 modelContext: modelContext
             )
-            conversation.subject = participantId
-            
-            // Get or create participant
+            // Get or create participant (with resolved name)
             let participant = try getOrCreateParticipant(
                 identifier: participantId,
                 modelContext: modelContext
             )
+            // Resolve contact name if not already set
+            if participant.displayName == nil {
+                if let resolvedName = await ContactResolver.shared.resolve(participantId) {
+                    participant.displayName = resolvedName
+                }
+            }
             if !conversation.participants.contains(where: { $0.email == participant.email }) {
                 conversation.participants.append(participant)
             }
+            conversation.subject = participant.displayName ?? participantId
             
             // Create MessageEvents (skip duplicates)
             let sortedEvents = events.sorted { $0.timestamp < $1.timestamp }
