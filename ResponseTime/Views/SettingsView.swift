@@ -337,6 +337,12 @@ struct SettingsView: View {
         }
     }
     
+    private func getDatabaseSize() -> Int {
+        let url = URL.applicationSupportDirectory
+            .appendingPathComponent("default.store")
+        return (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    }
+    
     private func deleteAllData() {
         // Delete in dependency order
         for type in [DismissedPending.self, ResponseWindow.self, MessageEvent.self, Conversation.self, Participant.self, SourceAccount.self, ResponseGoal.self] as [any PersistentModel.Type] {
@@ -376,6 +382,17 @@ struct SettingsView: View {
                 
                 Button("Export Summary Report") {
                     exportSummaryReport()
+                }
+                
+                // Database info
+                let dbSize = getDatabaseSize()
+                if dbSize > 0 {
+                    HStack {
+                        Text("Database size")
+                        Spacer()
+                        Text(ByteCountFormatter.string(fromByteCount: Int64(dbSize), countStyle: .file))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
                 Button("Delete All Data") {
