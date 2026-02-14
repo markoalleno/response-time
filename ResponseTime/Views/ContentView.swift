@@ -401,6 +401,9 @@ struct DashboardView: View {
                     #endif
                 }
                 
+                // Recent responses
+                recentResponsesList
+                
                 // Pending responses (actionable)
                 pendingResponsesSection
                 
@@ -746,6 +749,45 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+    
+    private var recentResponsesList: some View {
+        DashboardCard(title: "Recent Responses", icon: "clock.arrow.circlepath") {
+            let recent = recentResponses.prefix(5)
+            if recent.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(recent.enumerated()), id: \.offset) { _, window in
+                        HStack {
+                            let email = window.inboundEvent?.participantEmail ?? "Unknown"
+                            Text(email)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text(formatDuration(window.latencySeconds))
+                                .font(.caption.monospaced())
+                                .foregroundColor(responseColor(for: window.latencySeconds))
+                            
+                            if let t = window.inboundEvent?.timestamp {
+                                Text(t, style: .relative)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 60, alignment: .trailing)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func responseColor(for latency: TimeInterval) -> Color {
+        if latency < 900 { return .green }       // < 15 min
+        if latency < 1800 { return .blue }       // < 30 min
+        if latency < 3600 { return .orange }     // < 1 hr
+        return .red
     }
     
     private var percentileCard: some View {
