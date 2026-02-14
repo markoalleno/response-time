@@ -115,6 +115,22 @@ struct MenuBarView: View {
                 .padding(.top, 4)
             }
             
+            // Quick score badge
+            if stats.totalResponses > 5 {
+                if let median = stats.overallMedianLatency {
+                    let speedRatio = min(median / 3600, 10)
+                    let speed = max(0, Int(100 * (1 - speedRatio / 10)))
+                    let grade = speed >= 90 ? "A+" : speed >= 80 ? "A" : speed >= 70 ? "B" : speed >= 60 ? "C" : speed >= 50 ? "D" : "F"
+                    Text("Grade: \(grade)")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(speed >= 80 ? Color.green.opacity(0.15) : speed >= 60 ? Color.yellow.opacity(0.15) : Color.red.opacity(0.15))
+                        .foregroundColor(speed >= 80 ? .green : speed >= 60 ? .yellow : .red)
+                        .cornerRadius(6)
+                }
+            }
+            
             // Response count + trend
             if stats.totalResponses > 0 {
                 HStack(spacing: 8) {
