@@ -429,6 +429,18 @@ struct WeeklyDigestView: View {
             highlights.append(Highlight(emoji: "📅", text: "Busiest day: \(busiest.day) (\(busiest.count) responses)"))
         }
         
+        // Peak hour
+        var hourCounts: [Int: Int] = [:]
+        for w in weekWindows {
+            guard let t = w.inboundEvent?.timestamp else { continue }
+            let h = calendar.component(.hour, from: t)
+            hourCounts[h, default: 0] += 1
+        }
+        if let peakHour = hourCounts.max(by: { $0.value < $1.value }) {
+            let hStr = peakHour.key == 0 ? "12 AM" : peakHour.key < 12 ? "\(peakHour.key) AM" : peakHour.key == 12 ? "12 PM" : "\(peakHour.key - 12) PM"
+            highlights.append(Highlight(emoji: "🕐", text: "Most active hour: \(hStr) (\(peakHour.value) responses)"))
+        }
+        
         // Comparison to previous week
         let prevLatencies = previousWeekWindows.map(\.latencySeconds).sorted()
         if !prevLatencies.isEmpty && !latencies.isEmpty {
