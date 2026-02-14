@@ -643,7 +643,11 @@ struct DashboardView: View {
     
     private var responseScoreCard: some View {
         DashboardCard(title: "Response Score", icon: "star.fill") {
-            let score = ResponseScore.compute(from: recentResponses)
+            let score = ResponseScoreEngine.shared.computeScore(
+                from: recentResponses,
+                timeRange: appState.selectedTimeRange
+            )
+            
             if score.overall == 0 {
                 emptyState
             } else {
@@ -659,11 +663,52 @@ struct DashboardView: View {
                     
                     VStack(spacing: 6) {
                         ScoreBar(label: "Speed", value: score.speedScore, color: .blue)
-                            .help("How quickly you respond relative to your 1-hour target")
+                            .help("Response latency (median & p90)")
                         ScoreBar(label: "Consistency", value: score.consistencyScore, color: .purple)
-                            .help("How consistent your response times are (low variance = high score)")
+                            .help("Coefficient of variation: \(String(format: "%.2f", score.coefficientOfVariation))")
                         ScoreBar(label: "Coverage", value: score.coverageScore, color: .green)
-                            .help("Percentage of responses within your target time")
+                            .help("\(score.totalResponses) responses tracked")
+                        ScoreBar(label: "Trend", value: score.trendScore, color: .orange)
+                            .help(score.trendSlope.map { "Trend: \(String(format: "%.0f", $0))s/day" } ?? "Trend analysis")
+                        ScoreBar(label: "Improvement", value: score.improvementScore, color: .teal)
+                            .help("vs previous period")
+                    }
+                    
+                    // Show strengths/weaknesses
+                    if !score.strengths.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Strengths")
+                                .font(.caption.bold())
+                                .foregroundColor(.green)
+                            ForEach(score.strengths, id: \.self) { strength in
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.green)
+                                    Text(strength)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    
+                    if !score.weaknesses.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Areas to Improve")
+                                .font(.caption.bold())
+                                .foregroundColor(.orange)
+                            ForEach(score.weaknesses.prefix(2), id: \.self) { weakness in
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                    Text(weakness)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
             }
