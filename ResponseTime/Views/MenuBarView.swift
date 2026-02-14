@@ -252,6 +252,26 @@ struct MenuBarView: View {
             .padding(.vertical, 6)
             
             Button {
+                let text = """
+                📊 Response Time Stats (7 days)
+                Median: \(stats.formattedOverall)
+                Responses: \(stats.totalResponses)
+                Pending: \(stats.totalPending)
+                """
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            } label: {
+                HStack {
+                    Image(systemName: "doc.on.doc")
+                    Text("Copy Stats")
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            
+            Button {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             } label: {
                 HStack {
