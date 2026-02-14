@@ -521,9 +521,19 @@ struct RealContactRow: View {
             // Response time
             VStack(alignment: .trailing, spacing: 4) {
                 if let median = contact.medianResponseTime {
-                    Text(formatDuration(median))
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(responseColor(for: median))
+                    HStack(spacing: 6) {
+                        Text(gradeFor(median))
+                            .font(.caption.bold())
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(responseColor(for: median).opacity(0.2))
+                            .foregroundColor(responseColor(for: median))
+                            .cornerRadius(4)
+                        
+                        Text(formatDuration(median))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(responseColor(for: median))
+                    }
                 } else {
                     Text("--")
                         .font(.system(.body, design: .monospaced))
@@ -581,6 +591,16 @@ struct RealContactRow: View {
         if seconds < 7200 { return .yellow }      // < 2 hours
         if seconds < 86400 { return .orange }     // < 1 day
         return .red
+    }
+    
+    private func gradeFor(_ seconds: TimeInterval) -> String {
+        if seconds < 300 { return "A+" }      // < 5 min
+        if seconds < 900 { return "A" }       // < 15 min
+        if seconds < 1800 { return "B+" }     // < 30 min
+        if seconds < 3600 { return "B" }      // < 1 hr
+        if seconds < 7200 { return "C" }      // < 2 hr
+        if seconds < 14400 { return "D" }     // < 4 hr
+        return "F"
     }
 }
 
