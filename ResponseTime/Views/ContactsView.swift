@@ -648,6 +648,23 @@ struct ContactDetailSheet: View {
                         )
                     }
                     
+                    // Response time trend
+                    if !responseTimes.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Response Time Trend")
+                                .font(.headline)
+                            
+                            SparklineChart(
+                                values: responseTimes.suffix(20).reversed().map { $0.latencySeconds / 60 },
+                                color: .accentColor
+                            )
+                            .frame(height: 60)
+                        }
+                        .padding()
+                        .background(cardBackgroundColor)
+                        .cornerRadius(12)
+                    }
+                    
                     // Response history
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Recent Responses")

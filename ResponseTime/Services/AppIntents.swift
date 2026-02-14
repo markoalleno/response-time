@@ -22,8 +22,19 @@ struct GetResponseTimeIntent: AppIntent {
     
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        // Use real data from ResponseAnalyzer
-        let formattedTime = "--"
+        // Fetch real stats from iMessage
+        let connector = iMessageConnector()
+        let days: Int = {
+            switch timePeriod {
+            case .today: return 1
+            case .week: return 7
+            case .month: return 30
+            case .quarter: return 90
+            case .year: return 365
+            }
+        }()
+        let stats = try? await connector.getQuickStats(days: days)
+        let formattedTime = stats?.formattedMedian ?? "--"
         
         let platformText = platform?.displayName ?? "all platforms"
         let periodText = timePeriod.displayName.lowercased()
