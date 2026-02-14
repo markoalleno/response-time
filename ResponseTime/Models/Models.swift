@@ -7,6 +7,7 @@ import Foundation
 @Model
 final class SourceAccount {
     @Attribute(.unique) var id: UUID
+    #Index<SourceAccount>([\.platform], [\.isEnabled])
     var platform: Platform
     var displayName: String
     var email: String?
@@ -56,6 +57,7 @@ final class SourceAccount {
 @Model
 final class Conversation {
     @Attribute(.unique) var id: String // Platform-specific ID (thread ID, conversation ID)
+    #Index<Conversation>([\.lastActivityAt], [\.isExcluded])
     var sourceAccount: SourceAccount?
     var subject: String?
     var isArchived: Bool
@@ -143,6 +145,7 @@ final class Participant {
 @Model
 final class MessageEvent {
     @Attribute(.unique) var id: String // Platform-specific message ID
+    #Index<MessageEvent>([\.timestamp], [\.direction], [\.isExcluded], [\.timestamp, \.direction])
     var conversation: Conversation?
     var timestamp: Date
     var direction: MessageDirection
@@ -182,6 +185,7 @@ final class MessageEvent {
 @Model
 final class ResponseWindow {
     @Attribute(.unique) var id: UUID
+    #Index<ResponseWindow>([\.computedAt], [\.isValidForAnalytics], [\.isValidForAnalytics, \.computedAt], [\.isWorkingHours])
     var inboundEvent: MessageEvent?
     var outboundEvent: MessageEvent?
     var latencySeconds: TimeInterval
