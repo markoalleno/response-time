@@ -134,7 +134,7 @@ struct ContactsView: View {
             await loadData()
         }
         .sheet(item: $selectedContact) { contact in
-            ContactDetailSheet(contact: contact, connector: connector)
+            ContactDetailSheet(contact: contact, connector: connector, resolvedName: contactNames[contact.identifier])
         }
     }
     
@@ -579,6 +579,7 @@ struct GroupRow: View {
 struct ContactDetailSheet: View {
     let contact: iMessageConnector.ContactStats
     let connector: iMessageConnector
+    var resolvedName: String? = nil
     
     @Environment(\.dismiss) private var dismiss
     @State private var responseTimes: [ResponseTimeData] = []
@@ -731,7 +732,7 @@ struct ContactDetailSheet: View {
     }
     
     private var displayName: String {
-        contact.displayName ?? contact.identifier
+        resolvedName ?? contact.displayName ?? contact.identifier
     }
     
     private var initials: String {

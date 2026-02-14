@@ -230,6 +230,7 @@ struct ContentView: View {
         .disabled(appState.isSyncing)
         #if os(macOS)
         .help(appState.lastSyncDate.map { "Last sync: \(formatRelativeTime($0))" } ?? "Sync now")
+        .keyboardShortcut("r", modifiers: .command)
         #endif
     }
     
