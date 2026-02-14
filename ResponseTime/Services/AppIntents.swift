@@ -217,6 +217,50 @@ enum IntentPlatform: String, AppEnum {
     }
 }
 
+// MARK: - Get Pending Responses Intent
+
+struct GetPendingResponsesIntent: AppIntent {
+    static let title: LocalizedStringResource = "Get Pending Responses"
+    static let description: IntentDescription = IntentDescription("See who you haven't responded to yet")
+    
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let connector = iMessageConnector()
+        let conversations = try await connector.fetchAllConversations(days: 7)
+        let pending = conversations.filter { $0.pendingResponse && !$0.isGroupChat }
+        
+        if pending.isEmpty {
+            return .result(dialog: "You're all caught up! No pending responses.")
+        }
+        
+        let names = pending.prefix(5).map { conv in
+            conv.displayName ?? conv.participants.first?.displayIdentifier ?? conv.chatIdentifier
+        }
+        let list = names.joined(separator: ", ")
+        let more = pending.count > 5 ? " and \(pending.count - 5) more" : ""
+        
+        return .result(dialog: "You have \(pending.count) pending response\(pending.count == 1 ? "" : "s"): \(list)\(more).")
+    }
+}
+
+// MARK: - Sync Now Intent
+
+struct SyncNowIntent: AppIntent {
+    static let title: LocalizedStringResource = "Sync Response Time"
+    static let description: IntentDescription = IntentDescription("Sync your messages and update response time data")
+    
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let connector = iMessageConnector()
+        let stats = try await connector.getQuickStats(days: 7)
+        
+        let median = stats.formattedMedian
+        let pending = stats.pendingResponses
+        
+        return .result(dialog: "Synced! Median response time: \(median). \(pending) pending response\(pending == 1 ? "" : "s").")
+    }
+}
+
 // MARK: - App Shortcuts Provider
 
 struct ResponseTimeShortcuts: AppShortcutsProvider {
@@ -240,6 +284,27 @@ struct ResponseTimeShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Goal Progress",
             systemImageName: "target"
+        )
+        
+        AppShortcut(
+            intent: GetPendingResponsesIntent(),
+            phrases: [
+                "Who haven't I responded to in \(.applicationName)",
+                "Show pending responses in \(.applicationName)",
+                "Who's waiting for my reply in \(.applicationName)"
+            ],
+            shortTitle: "Pending Responses",
+            systemImageName: "exclamationmark.bubble"
+        )
+        
+        AppShortcut(
+            intent: SyncNowIntent(),
+            phrases: [
+                "Sync \(.applicationName)",
+                "Update my response time data in \(.applicationName)"
+            ],
+            shortTitle: "Sync Now",
+            systemImageName: "arrow.triangle.2.circlepath"
         )
     }
 }
