@@ -117,12 +117,58 @@ struct WeeklyDigestView: View {
             
             Spacer()
             
+            #if os(macOS)
+            Button {
+                let text = generateShareableReport()
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.clipboard")
+            }
+            .buttonStyle(.plain)
+            .help("Copy weekly report to clipboard")
+            #endif
+            
             Button { weekOffset = max(0, weekOffset - 1) } label: {
                 Image(systemName: "chevron.right")
             }
             .buttonStyle(.plain)
             .disabled(weekOffset == 0)
         }
+    }
+    
+    private func generateShareableReport() -> String {
+        let valid = weekWindows.filter(\.isValidForAnalytics)
+        let latencies = valid.map(\.latencySeconds).sorted()
+        let median = latencies.isEmpty ? 0 : latencies[latencies.count / 2]
+        
+        var lines: [String] = []
+        lines.append("📊 Response Time — \(weekRangeLabel)")
+        lines.append("")
+        lines.append("Responses: \(valid.count)")
+        lines.append("Median: \(formatDuration(median))")
+        
+        if let fastest = latencies.first {
+            lines.append("Fastest: \(formatDuration(fastest))")
+        }
+        
+        let under30 = latencies.filter { $0 < 1800 }.count
+        let pct = latencies.isEmpty ? 0 : Int(Double(under30) / Double(latencies.count) * 100)
+        lines.append("Under 30 min: \(pct)%")
+        
+        let prevLatencies = previousWeekWindows.map(\.latencySeconds).sorted()
+        if !prevLatencies.isEmpty && !latencies.isEmpty {
+            let prevMedian = prevLatencies[prevLatencies.count / 2]
+            if median < prevMedian {
+                let improvement = Int(((prevMedian - median) / prevMedian) * 100)
+                lines.append("📈 Improved \(improvement)% vs last week")
+            } else if median > prevMedian {
+                let decline = Int(((median - prevMedian) / prevMedian) * 100)
+                lines.append("📉 Declined \(decline)% vs last week")
+            }
+        }
+        
+        return lines.joined(separator: "\n")
     }
     
     private var weekRangeLabel: String {
