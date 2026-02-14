@@ -6,6 +6,8 @@ struct WeeklyDigestView: View {
     @Environment(AppState.self) private var appState
     @Query(sort: \ResponseWindow.computedAt, order: .reverse)
     private var allWindows: [ResponseWindow]
+    
+    @Query private var goals: [ResponseGoal]
     @Query private var accounts: [SourceAccount]
     
     @State private var weekOffset: Int = 0
@@ -79,6 +81,11 @@ struct WeeklyDigestView: View {
                     
                     // Highlights
                     highlightsCard
+                    
+                    // Goal streaks
+                    if !goals.isEmpty {
+                        goalStreaksCard
+                    }
                     
                     // Day-by-day breakdown
                     dayByDayCard
@@ -375,6 +382,56 @@ struct WeeklyDigestView: View {
             let sorted = latencies.sorted()
             return (email: email, count: latencies.count, median: sorted[sorted.count / 2])
         }.sorted { $0.count > $1.count }
+    }
+    
+    // MARK: - Goal Streaks
+    
+    private var goalStreaksCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Goal Streaks")
+                .font(.headline)
+            
+            ForEach(Array(goals.enumerated()), id: \.offset) { _, goal in
+                GoalStreakRow(goal: goal)
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    struct GoalStreakRow: View {
+        let goal: ResponseGoal
+        
+        var body: some View {
+            HStack {
+                let icon = goal.platform?.icon ?? "target"
+                let color = goal.platform?.color ?? Color.accentColor
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 20)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(goal.platform?.displayName ?? "All Platforms") < \(goal.formattedTarget)")
+                        .font(.subheadline)
+                    Text("Current: \(goal.currentStreak) days · Best: \(goal.longestStreak) days")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if goal.currentStreak >= 3 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "flame.fill")
+                            .foregroundColor(.orange)
+                        Text("\(goal.currentStreak)")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Highlights
