@@ -300,7 +300,7 @@ struct OnboardingView: View {
             
             // Run first sync
             do {
-                try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
+                try await iMessageSyncService.shared.syncToSwiftData(container: modelContext.container)
             } catch {
                 // Non-fatal — user can sync later
             }

@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 
 /// Service to sync iMessage data to SwiftData models
-@MainActor
-final class iMessageSyncService {
+/// Runs sync on a background ModelContext to avoid blocking SwiftUI layout
+final class iMessageSyncService: Sendable {
     static let shared = iMessageSyncService()
     
     private let connector = iMessageConnector()
@@ -12,20 +12,26 @@ final class iMessageSyncService {
     
     // MARK: - Sync to SwiftData
     
-    func syncToSwiftData(modelContext: ModelContext) async throws {
-        // Get or create the iMessage source account
-        let sourceAccount = try getOrCreateSourceAccount(modelContext: modelContext)
-        
-        // Fetch raw messages from chat.db via the connector
-        let syncResult = try await connector.sync(since: sourceAccount.syncCheckpoint, limit: 10000)
-        
-        // Pre-load contact names for resolution
+    /// Syncs iMessage data using a background ModelContext.
+    /// Call from any actor — this creates its own context from the container.
+    func syncToSwiftData(container: ModelContainer) async throws {
+        // Pre-load contact names on main actor before background work
         _ = await ContactResolver.shared.requestAccessAndLoad()
+        
+        // Fetch raw messages from chat.db (this is I/O, fine off main)
+        // We need the checkpoint from the existing account, fetch it in background context
+        let backgroundContext = ModelContext(container)
+        backgroundContext.autosaveEnabled = false
+        
+        // Get or create the iMessage source account
+        let sourceAccount = try getOrCreateSourceAccount(modelContext: backgroundContext)
+        
+        let syncResult = try await connector.sync(since: sourceAccount.syncCheckpoint, limit: 10000)
         
         guard !syncResult.messageEvents.isEmpty else {
             sourceAccount.syncCheckpoint = Date()
             sourceAccount.updatedAt = Date()
-            try modelContext.save()
+            try backgroundContext.save()
             return
         }
         
@@ -43,12 +49,12 @@ final class iMessageSyncService {
             let conversation = try getOrCreateConversation(
                 id: conversationId,
                 sourceAccount: sourceAccount,
-                modelContext: modelContext
+                modelContext: backgroundContext
             )
             // Get or create participant (with resolved name)
             let participant = try getOrCreateParticipant(
                 identifier: participantId,
-                modelContext: modelContext
+                modelContext: backgroundContext
             )
             // Resolve contact name if not already set
             if participant.displayName == nil {
@@ -68,7 +74,7 @@ final class iMessageSyncService {
                 let existingDescriptor = FetchDescriptor<MessageEvent>(
                     predicate: #Predicate { $0.id == eventId }
                 )
-                if let _ = try? modelContext.fetch(existingDescriptor).first {
+                if let _ = try? backgroundContext.fetch(existingDescriptor).first {
                     continue  // Already exists
                 }
                 
@@ -79,7 +85,7 @@ final class iMessageSyncService {
                     direction: eventData.direction,
                     participantEmail: eventData.participantId
                 )
-                modelContext.insert(messageEvent)
+                backgroundContext.insert(messageEvent)
             }
             
             // Update last activity
@@ -89,13 +95,14 @@ final class iMessageSyncService {
         }
         
         // Compute response windows for all iMessage conversations
-        try computeResponseWindows(for: sourceAccount, modelContext: modelContext)
+        try computeResponseWindows(for: sourceAccount, modelContext: backgroundContext)
         
         // Update checkpoint
         sourceAccount.syncCheckpoint = Date()
         sourceAccount.updatedAt = Date()
         
-        try modelContext.save()
+        // Single save at the end — main context auto-merges
+        try backgroundContext.save()
     }
     
     // MARK: - Compute Response Windows

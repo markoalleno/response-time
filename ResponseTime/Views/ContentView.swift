@@ -332,8 +332,9 @@ struct ContentView: View {
                 }
             }
             
-            // Sync iMessage data to SwiftData (creates MessageEvents + ResponseWindows)
-            try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
+            // Sync iMessage data to SwiftData using a background context
+            // This avoids blocking the main thread / SwiftUI layout
+            try await iMessageSyncService.shared.syncToSwiftData(container: modelContext.container)
             await MainActor.run {
                 appState.lastSyncDate = Date()
                 appState.error = nil  // Clear any previous errors
