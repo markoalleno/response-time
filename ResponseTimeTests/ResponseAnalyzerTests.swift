@@ -586,6 +586,43 @@ final class ResponseAnalyzerTests: XCTestCase {
         XCTAssertEqual(declining.trendDirection.icon, "arrow.up.right")
     }
     
+    // MARK: - Working Hours Card Data
+    
+    func testWorkingHoursBreakdown() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conv = Conversation(id: "wh_conv", sourceAccount: account)
+        modelContext.insert(conv)
+        
+        // Create a window during working hours (Wednesday 10 AM)
+        let workComponents = DateComponents(year: 2026, month: 2, day: 18, hour: 10) // Wednesday
+        let workDate = Calendar.current.date(from: workComponents)!
+        let workInbound = MessageEvent(id: "wh_in", conversation: conv, timestamp: workDate, direction: .inbound, participantEmail: "t@t.com")
+        modelContext.insert(workInbound)
+        
+        let workWindow = ResponseWindow(inboundEvent: workInbound, latencySeconds: 1200, confidence: 1.0, matchingMethod: .timeWindow)
+        XCTAssertTrue(workWindow.isWorkingHours) // Should be working hours
+        
+        // Create a window during off hours (Saturday 2 AM)
+        let offComponents = DateComponents(year: 2026, month: 2, day: 14, hour: 2)
+        let offDate = Calendar.current.date(from: offComponents)!
+        let offInbound = MessageEvent(id: "wh_off_in", conversation: conv, timestamp: offDate, direction: .inbound, participantEmail: "t@t.com")
+        modelContext.insert(offInbound)
+        
+        let offWindow = ResponseWindow(inboundEvent: offInbound, latencySeconds: 7200, confidence: 1.0, matchingMethod: .timeWindow)
+        // Saturday 2 AM — hourOfDay should be 2, dayOfWeek should be 7 (Saturday)
+        XCTAssertEqual(offWindow.hourOfDay, 2)
+        XCTAssertEqual(offWindow.dayOfWeek, 7) // Saturday
+    }
+    
+    // MARK: - DismissedPending Edge Cases
+    
+    func testDismissedPendingSnoozedWithNilDate() {
+        let dismissed = DismissedPending(contactIdentifier: "+999", action: .snoozed, snoozeUntil: nil)
+        modelContext.insert(dismissed)
+        XCTAssertFalse(dismissed.isActive) // No snooze date = not active
+    }
+    
     // MARK: - Multiple Response Windows
     
     func testMultipleResponseWindowsInConversation() {
