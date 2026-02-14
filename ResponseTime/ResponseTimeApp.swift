@@ -79,8 +79,9 @@ struct ResponseTimeApp: App {
         do {
             let granted = try await NotificationService.shared.requestAuthorization()
             if granted {
-                // Schedule daily summary notification
-                try await NotificationService.shared.scheduleDailySummary(at: 21, minute: 0)
+                // Schedule daily summary notification at user's preferred time
+                let hour = UserDefaults.standard.integer(forKey: "dailySummaryHour")
+                try await NotificationService.shared.scheduleDailySummary(at: hour == 0 ? 21 : hour, minute: 0)
             }
         } catch {
             print("Failed to setup notifications: \(error)")

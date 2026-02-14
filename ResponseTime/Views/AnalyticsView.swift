@@ -384,7 +384,7 @@ struct AnalyticsView: View {
         }
     }
     
-    private struct InsightData: Sendable {
+    private struct InsightData {
         let icon: String
         let color: Color
         let title: String

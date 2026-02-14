@@ -71,6 +71,16 @@ struct ContentView: View {
             }
         }
         .task {
+            // Auto-create iMessage source account if none exists and we have access
+            if accounts.isEmpty {
+                let testPath = NSHomeDirectory() + "/Library/Messages/chat.db"
+                if FileManager.default.isReadableFile(atPath: testPath) {
+                    let account = SourceAccount(platform: .imessage, displayName: "iMessage", isEnabled: true)
+                    modelContext.insert(account)
+                    try? modelContext.save()
+                }
+            }
+            
             // Apply user settings to analyzer
             let analyzer = ResponseAnalyzer.shared
             analyzer.matchingWindowDays = UserDefaults.standard.integer(forKey: "matchingWindowDays")
