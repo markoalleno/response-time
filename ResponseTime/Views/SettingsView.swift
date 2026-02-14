@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage("workingHoursEnd") private var workingHoursEnd = 17
     @AppStorage("excludeWeekends") private var excludeWeekends = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("syncInBackground") private var syncInBackground = false
     @AppStorage("syncIntervalMinutes") private var syncIntervalMinutes = 30
     @AppStorage("matchingWindowDays") private var matchingWindowDays = 7
@@ -164,6 +165,7 @@ struct SettingsView: View {
         Form {
             Section {
                 Toggle("Show in Menu Bar", isOn: $showMenuBarIcon)
+                Toggle("Launch at Login", isOn: $launchAtLogin)
                 Toggle("Sync in Background", isOn: $syncInBackground)
                 
                 if syncInBackground {
