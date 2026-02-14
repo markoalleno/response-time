@@ -12,6 +12,7 @@ struct ContentView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case dashboard = "Dashboard"
         case analytics = "Analytics"
+        case digest = "Weekly Digest"
         case goals = "Goals"
         case contacts = "Contacts"
         case settings = "Settings"
@@ -22,6 +23,7 @@ struct ContentView: View {
             switch self {
             case .dashboard: return "gauge.with.dots.needle.bottom.50percent"
             case .analytics: return "chart.xyaxis.line"
+            case .digest: return "calendar.badge.clock"
             case .goals: return "target"
             case .contacts: return "person.2"
             case .settings: return "gear"
@@ -213,6 +215,8 @@ struct ContentView: View {
             DashboardView()
         case .analytics:
             AnalyticsView()
+        case .digest:
+            WeeklyDigestView()
         case .goals:
             GoalsView()
         case .contacts:

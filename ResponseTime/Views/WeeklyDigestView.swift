@@ -1,0 +1,385 @@
+import SwiftUI
+import SwiftData
+import Charts
+
+struct WeeklyDigestView: View {
+    @Environment(AppState.self) private var appState
+    @Query(sort: \ResponseWindow.computedAt, order: .reverse)
+    private var allWindows: [ResponseWindow]
+    @Query private var accounts: [SourceAccount]
+    
+    @State private var weekOffset: Int = 0
+    
+    private var calendar: Calendar { Calendar.current }
+    
+    private var weekStart: Date {
+        let now = Date()
+        let shifted = calendar.date(byAdding: .weekOfYear, value: -weekOffset, to: now)!
+        return calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: shifted))!
+    }
+    
+    private var weekEnd: Date {
+        calendar.date(byAdding: .day, value: 7, to: weekStart)!
+    }
+    
+    private var weekWindows: [ResponseWindow] {
+        allWindows.filter { w in
+            guard let t = w.inboundEvent?.timestamp else { return false }
+            return t >= weekStart && t < weekEnd && w.isValidForAnalytics
+        }
+    }
+    
+    private var previousWeekWindows: [ResponseWindow] {
+        let prevStart = calendar.date(byAdding: .day, value: -7, to: weekStart)!
+        return allWindows.filter { w in
+            guard let t = w.inboundEvent?.timestamp else { return false }
+            return t >= prevStart && t < weekStart && w.isValidForAnalytics
+        }
+    }
+    
+    private var backgroundColor: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        Color(nsColor: .controlBackgroundColor)
+        #else
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 20) {
+                // Week navigation
+                weekNavigator
+                
+                if weekWindows.isEmpty {
+                    emptyWeek
+                } else {
+                    // Summary hero
+                    summaryHero
+                    
+                    // Daily breakdown chart
+                    dailyBreakdownCard
+                    
+                    // Stats grid
+                    statsGrid
+                    
+                    // Top contacts this week
+                    topContactsCard
+                    
+                    // Day-by-day breakdown
+                    dayByDayCard
+                }
+            }
+            .padding(24)
+        }
+        .background(backgroundColor)
+    }
+    
+    // MARK: - Week Navigator
+    
+    private var weekNavigator: some View {
+        HStack {
+            Button { weekOffset += 1 } label: {
+                Image(systemName: "chevron.left")
+            }
+            .buttonStyle(.plain)
+            
+            Spacer()
+            
+            VStack(spacing: 4) {
+                Text("Weekly Digest")
+                    .font(.title2.bold())
+                Text(weekRangeLabel)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Button { weekOffset = max(0, weekOffset - 1) } label: {
+                Image(systemName: "chevron.right")
+            }
+            .buttonStyle(.plain)
+            .disabled(weekOffset == 0)
+        }
+    }
+    
+    private var weekRangeLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        let end = calendar.date(byAdding: .day, value: 6, to: weekStart)!
+        return "\(formatter.string(from: weekStart)) – \(formatter.string(from: end))"
+    }
+    
+    // MARK: - Summary Hero
+    
+    private var summaryHero: some View {
+        let latencies = weekWindows.map(\.latencySeconds).sorted()
+        let median = latencies[latencies.count / 2]
+        let prevLatencies = previousWeekWindows.map(\.latencySeconds).sorted()
+        let prevMedian = prevLatencies.isEmpty ? nil : prevLatencies[prevLatencies.count / 2]
+        let change: Double? = prevMedian.map { ((median - $0) / max($0, 1)) * 100 }
+        
+        return VStack(spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(formatDuration(median))
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                
+                if let change = change {
+                    HStack(spacing: 2) {
+                        Image(systemName: change < 0 ? "arrow.down.right" : change > 0 ? "arrow.up.right" : "minus")
+                        Text("\(abs(Int(change)))%")
+                    }
+                    .font(.title3)
+                    .foregroundColor(change < -5 ? .green : change > 5 ? .red : .secondary)
+                }
+            }
+            
+            Text("Median response time")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            
+            HStack(spacing: 24) {
+                VStack {
+                    Text("\(weekWindows.count)")
+                        .font(.title3.bold())
+                    Text("responses")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                VStack {
+                    Text(formatDuration(latencies.first ?? 0))
+                        .font(.title3.bold())
+                        .foregroundColor(.green)
+                    Text("fastest")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                VStack {
+                    Text(formatDuration(latencies.last ?? 0))
+                        .font(.title3.bold())
+                        .foregroundColor(.orange)
+                    Text("slowest")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    // MARK: - Daily Breakdown Chart
+    
+    private var dailyBreakdownCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Daily Response Times")
+                .font(.headline)
+            
+            let dailyData = computeDailyData()
+            if dailyData.isEmpty {
+                Text("No data").foregroundColor(.secondary)
+            } else {
+                Chart {
+                    ForEach(dailyData, id: \.day) { item in
+                        BarMark(
+                            x: .value("Day", item.day),
+                            y: .value("Minutes", item.median / 60)
+                        )
+                        .foregroundStyle(barColor(for: item.median))
+                        .cornerRadius(4)
+                        .annotation(position: .top) {
+                            if item.count > 0 {
+                                Text(formatDurationShort(item.median))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                .chartYAxisLabel("Minutes")
+                .frame(height: 200)
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    private func barColor(for median: TimeInterval) -> Color {
+        if median < 1800 { return .green }
+        if median < 3600 { return .blue }
+        if median < 7200 { return .yellow }
+        return .orange
+    }
+    
+    private func computeDailyData() -> [(day: String, median: TimeInterval, count: Int)] {
+        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        return (0..<7).map { offset in
+            let day = calendar.date(byAdding: .day, value: offset, to: weekStart)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: day)!
+            let windows = weekWindows.filter {
+                guard let t = $0.inboundEvent?.timestamp else { return false }
+                return t >= day && t < dayEnd
+            }
+            let latencies = windows.map(\.latencySeconds).sorted()
+            let median = latencies.isEmpty ? 0 : latencies[latencies.count / 2]
+            let weekday = calendar.component(.weekday, from: day) - 1
+            return (day: dayNames[weekday], median: median, count: windows.count)
+        }
+    }
+    
+    // MARK: - Stats Grid
+    
+    private var statsGrid: some View {
+        let latencies = weekWindows.map(\.latencySeconds).sorted()
+        let mean = latencies.isEmpty ? 0 : latencies.reduce(0, +) / Double(latencies.count)
+        let p90 = latencies.isEmpty ? 0 : latencies[Int(Double(latencies.count) * 0.9)]
+        let workHrs = weekWindows.filter(\.isWorkingHours)
+        let workMedian = workHrs.isEmpty ? nil : workHrs.map(\.latencySeconds).sorted()[workHrs.count / 2]
+        
+        return LazyVGrid(columns: [
+            GridItem(.flexible()), GridItem(.flexible()),
+            GridItem(.flexible()), GridItem(.flexible())
+        ], spacing: 12) {
+            StatCard(title: "Mean", value: formatDuration(mean), icon: "function", color: .blue)
+            StatCard(title: "90th %ile", value: formatDuration(p90), icon: "chart.bar.fill", color: .purple)
+            StatCard(title: "Work Hours", value: workMedian.map { formatDuration($0) } ?? "--", icon: "briefcase.fill", color: .teal)
+            StatCard(title: "Responses", value: "\(weekWindows.count)", icon: "arrow.right.arrow.left", color: .green)
+        }
+    }
+    
+    // MARK: - Top Contacts
+    
+    private var topContactsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Top Contacts This Week")
+                .font(.headline)
+            
+            let contactData = computeContactBreakdown()
+            if contactData.isEmpty {
+                Text("No contact data").foregroundColor(.secondary)
+            } else {
+                ForEach(contactData.prefix(5), id: \.email) { contact in
+                    HStack {
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                            Text(String(contact.email.prefix(1)).uppercased())
+                                .font(.caption.bold())
+                                .foregroundColor(.accentColor)
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            Text(contact.email)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Text("\(contact.count) responses")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Text(formatDuration(contact.median))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(contact.median < 3600 ? .green : .orange)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    private func computeContactBreakdown() -> [(email: String, count: Int, median: TimeInterval)] {
+        var byContact: [String: [TimeInterval]] = [:]
+        for w in weekWindows {
+            let email = w.inboundEvent?.participantEmail ?? "unknown"
+            byContact[email, default: []].append(w.latencySeconds)
+        }
+        return byContact.map { (email, latencies) in
+            let sorted = latencies.sorted()
+            return (email: email, count: latencies.count, median: sorted[sorted.count / 2])
+        }.sorted { $0.count > $1.count }
+    }
+    
+    // MARK: - Day by Day
+    
+    private var dayByDayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Day by Day")
+                .font(.headline)
+            
+            let dailyData = computeDailyData()
+            ForEach(dailyData.filter { $0.count > 0 }, id: \.day) { item in
+                HStack {
+                    Text(item.day)
+                        .font(.subheadline.bold())
+                        .frame(width: 40, alignment: .leading)
+                    
+                    GeometryReader { geo in
+                        let maxMedian = dailyData.map(\.median).max() ?? 1
+                        let width = maxMedian > 0 ? geo.size.width * (item.median / maxMedian) : 0
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(barColor(for: item.median))
+                            .frame(width: max(width, 4), height: 20)
+                    }
+                    .frame(height: 20)
+                    
+                    Text(formatDuration(item.median))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 50, alignment: .trailing)
+                    
+                    Text("\(item.count)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(width: 20)
+                }
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    // MARK: - Empty State
+    
+    private var emptyWeek: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            Text("No responses this week")
+                .font(.headline)
+            Text("Check a different week or sync your messages")
+                .font(.body)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(48)
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+}
+
+#Preview {
+    WeeklyDigestView()
+        .environment(AppState())
+        .modelContainer(for: ResponseWindow.self)
+}
