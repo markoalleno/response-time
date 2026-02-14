@@ -22,6 +22,7 @@ struct AnalyticsView: View {
         case distribution = "Distribution"
         case byPlatform = "By Platform"
         case byContact = "By Contact"
+        case activity = "Activity"
         
         var id: String { rawValue }
         
@@ -35,6 +36,7 @@ struct AnalyticsView: View {
             case .distribution: return "chart.bar.fill"
             case .byPlatform: return "chart.pie.fill"
             case .byContact: return "person.3.fill"
+            case .activity: return "square.grid.3x3.topleft.filled"
             }
         }
     }
@@ -176,6 +178,8 @@ struct AnalyticsView: View {
             platformChart
         case .byContact:
             contactChart
+        case .activity:
+            activityGraph
         }
     }
     
@@ -571,6 +575,96 @@ struct AnalyticsView: View {
                 .frame(minHeight: CGFloat(contactData.count) * 35)
             }
         }
+    }
+    
+    private var activityGraph: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Response Activity")
+                .font(.headline)
+            
+            let dailyCounts = computeDailyCounts()
+            if dailyCounts.isEmpty {
+                emptyChartState
+            } else {
+                // GitHub-style grid: 7 rows (days) x N weeks
+                let calendar = Calendar.current
+                let weeks = stride(from: 0, to: min(dailyCounts.count, 91), by: 7).map { offset -> [DailyCount] in
+                    let end = min(offset + 7, dailyCounts.count)
+                    return Array(dailyCounts[offset..<end])
+                }
+                let maxCount = dailyCounts.map(\.count).max() ?? 1
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 2) {
+                        ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
+                            VStack(spacing: 2) {
+                                ForEach(week) { day in
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(activityColor(count: day.count, max: maxCount))
+                                        .frame(width: 14, height: 14)
+                                        .help("\(day.dateLabel): \(day.count) responses")
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Legend
+                    HStack(spacing: 4) {
+                        Text("Less")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        ForEach(0..<5) { level in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(activityColor(count: level * maxCount / 4, max: maxCount))
+                                .frame(width: 10, height: 10)
+                        }
+                        Text("More")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+    
+    private struct DailyCount: Identifiable {
+        let id: Date
+        let date: Date
+        let count: Int
+        var dateLabel: String {
+            let f = DateFormatter()
+            f.dateStyle = .medium
+            return f.string(from: date)
+        }
+    }
+    
+    private func computeDailyCounts() -> [DailyCount] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let valid = filteredWindows.filter(\.isValidForAnalytics)
+        
+        var counts: [Date: Int] = [:]
+        for window in valid {
+            guard let t = window.inboundEvent?.timestamp else { continue }
+            let day = calendar.startOfDay(for: t)
+            counts[day, default: 0] += 1
+        }
+        
+        // Last 91 days (13 weeks)
+        return (0..<91).reversed().map { offset in
+            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            return DailyCount(id: day, date: day, count: counts[day] ?? 0)
+        }
+    }
+    
+    private func activityColor(count: Int, max: Int) -> Color {
+        if count == 0 { return Color.gray.opacity(0.15) }
+        let ratio = Double(count) / Double(max)
+        if ratio < 0.25 { return Color.green.opacity(0.3) }
+        if ratio < 0.5 { return Color.green.opacity(0.5) }
+        if ratio < 0.75 { return Color.green.opacity(0.7) }
+        return Color.green
     }
     
     private func computeContactData() -> [(name: String, median: TimeInterval, count: Int)] {
