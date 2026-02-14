@@ -68,6 +68,7 @@ struct ContactsView: View {
                                 .scaleEffect(0.7)
                         } else {
                             Button {
+                                lastLoadTime = nil // Force reload
                                 Task { await loadData() }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
@@ -170,7 +171,12 @@ struct ContactsView: View {
     
     @State private var contactNames: [String: String] = [:]
     
+    @State private var lastLoadTime: Date?
+    
     private func loadData() async {
+        // Skip reload if loaded less than 30 seconds ago
+        if let last = lastLoadTime, Date().timeIntervalSince(last) < 30 { return }
+        
         isLoading = true
         errorMessage = nil
         
@@ -194,6 +200,7 @@ struct ContactsView: View {
             let resolver = ContactResolver.shared
             _ = await resolver.requestAccessAndLoad()
             contactNames = await resolver.resolveAll(identifiers)
+            lastLoadTime = Date()
         } catch {
             errorMessage = error.localizedDescription
         }
