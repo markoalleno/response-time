@@ -238,13 +238,13 @@ enum TimeRange: String, CaseIterable, Identifiable, Sendable {
         case .today:
             return calendar.startOfDay(for: now)
         case .week:
-            return calendar.date(byAdding: .day, value: -7, to: now)!
+            return calendar.date(byAdding: .day, value: -7, to: now) ?? now.addingTimeInterval(-7 * 24 * 3600)
         case .month:
-            return calendar.date(byAdding: .month, value: -1, to: now)!
+            return calendar.date(byAdding: .month, value: -1, to: now) ?? now.addingTimeInterval(-30 * 24 * 3600)
         case .quarter:
-            return calendar.date(byAdding: .month, value: -3, to: now)!
+            return calendar.date(byAdding: .month, value: -3, to: now) ?? now.addingTimeInterval(-90 * 24 * 3600)
         case .year:
-            return calendar.date(byAdding: .year, value: -1, to: now)!
+            return calendar.date(byAdding: .year, value: -1, to: now) ?? now.addingTimeInterval(-365 * 24 * 3600)
         }
     }
 }

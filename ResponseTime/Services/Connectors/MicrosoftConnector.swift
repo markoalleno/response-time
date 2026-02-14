@@ -188,7 +188,11 @@ actor MicrosoftConnector {
     ) async throws -> GraphSyncResult {
         await rateLimit()
         
-        var request = URLRequest(url: URL(string: deltaLink)!)
+        guard let url = URL(string: deltaLink) else {
+            throw ConnectorError.invalidResponse
+        }
+        
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         
         let (data, response) = try await URLSession.shared.data(for: request)

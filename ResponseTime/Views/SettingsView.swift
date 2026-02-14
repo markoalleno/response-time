@@ -154,7 +154,9 @@ struct SettingsView: View {
     private func formatHour(_ hour: Int) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h a"
-        let date = Calendar.current.date(from: DateComponents(hour: hour))!
+        guard let date = Calendar.current.date(from: DateComponents(hour: hour)) else {
+            return "\(hour):00"  // Fallback
+        }
         return formatter.string(from: date)
     }
     
@@ -499,8 +501,12 @@ struct SettingsView: View {
             Divider()
             
             VStack(spacing: 8) {
-                Link("GitHub Repository", destination: URL(string: "https://github.com/markoalleno/response-time")!)
-                Link("Report an Issue", destination: URL(string: "https://github.com/markoalleno/response-time/issues")!)
+                if let githubURL = URL(string: "https://github.com/markoalleno/response-time") {
+                    Link("GitHub Repository", destination: githubURL)
+                }
+                if let issuesURL = URL(string: "https://github.com/markoalleno/response-time/issues") {
+                    Link("Report an Issue", destination: issuesURL)
+                }
             }
             
             Spacer()
@@ -693,9 +699,15 @@ struct SettingsView: View {
                 .font(.footnote)
                 .foregroundColor(.secondary)
             
-            Link("Privacy Policy", destination: URL(string: "https://example.com/privacy")!)
-            Link("Terms of Service", destination: URL(string: "https://example.com/terms")!)
-            Link("Support", destination: URL(string: "mailto:support@example.com")!)
+            if let privacyURL = URL(string: "https://example.com/privacy") {
+                Link("Privacy Policy", destination: privacyURL)
+            }
+            if let termsURL = URL(string: "https://example.com/terms") {
+                Link("Terms of Service", destination: termsURL)
+            }
+            if let supportURL = URL(string: "mailto:support@example.com") {
+                Link("Support", destination: supportURL)
+            }
             
             Text("© 2025 Mark Allen")
                 .font(.caption)

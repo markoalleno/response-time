@@ -78,7 +78,11 @@ actor SlackConnector {
     private func getCurrentUserId(accessToken: String) async throws -> String {
         await rateLimit()
         
-        var request = URLRequest(url: URL(string: "\(baseURL)/auth.test")!)
+        guard let url = URL(string: "\(baseURL)/auth.test") else {
+            throw ConnectorError.invalidResponse
+        }
+        
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         
         let (data, _) = try await URLSession.shared.data(for: request)

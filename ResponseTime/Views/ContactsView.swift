@@ -226,7 +226,9 @@ struct ContactsView: View {
             if message.contains("Full Disk Access") {
                 Button("Open System Settings") {
                     #if os(macOS)
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+                    if let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(settingsURL)
+                    }
                     #endif
                 }
                 .buttonStyle(.borderedProminent)
