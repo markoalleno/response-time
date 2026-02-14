@@ -722,6 +722,36 @@ struct ContactDetailSheet: View {
                         .cornerRadius(12)
                     }
                     
+                    // Response distribution
+                    if responseTimes.count >= 3 {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Response Distribution")
+                                .font(.headline)
+                            
+                            let buckets = computeContactDistribution()
+                            HStack(spacing: 4) {
+                                ForEach(buckets, id: \.label) { bucket in
+                                    VStack(spacing: 4) {
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(bucket.color)
+                                            .frame(height: max(CGFloat(bucket.count) / CGFloat(max(buckets.map(\.count).max() ?? 1, 1)) * 40, 4))
+                                        Text(bucket.label)
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.secondary)
+                                        Text("\(bucket.count)")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .frame(height: 70)
+                        }
+                        .padding()
+                        .background(cardBackgroundColor)
+                        .cornerRadius(12)
+                    }
+                    
                     // Response history
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Recent Responses")
@@ -791,6 +821,29 @@ struct ContactDetailSheet: View {
         #if os(macOS)
         .frame(width: 450, height: 600)
         #endif
+    }
+    
+    private func computeContactDistribution() -> [(label: String, count: Int, color: Color)] {
+        var buckets: [(label: String, count: Int, color: Color)] = [
+            ("<5m", 0, .green),
+            ("5-30m", 0, .blue),
+            ("30m-1h", 0, .yellow),
+            ("1-4h", 0, .orange),
+            (">4h", 0, .red)
+        ]
+        
+        for rt in responseTimes {
+            let min = rt.latencySeconds / 60
+            switch min {
+            case ..<5: buckets[0].count += 1
+            case 5..<30: buckets[1].count += 1
+            case 30..<60: buckets[2].count += 1
+            case 60..<240: buckets[3].count += 1
+            default: buckets[4].count += 1
+            }
+        }
+        
+        return buckets
     }
     
     private func loadResponseTimes() async {
