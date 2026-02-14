@@ -669,30 +669,46 @@ struct MetricRow: View {
 
 // MARK: - Trend Chart
 
+import Charts
+
 struct TrendChart: View {
     let data: [DailyMetrics]
     
     var body: some View {
-        // Simple line chart visualization
-        GeometryReader { geo in
-            Path { path in
-                guard !data.isEmpty else { return }
-                
-                let maxLatency = data.map(\.medianLatency).max() ?? 1
-                let stepX = geo.size.width / CGFloat(max(data.count - 1, 1))
-                
-                for (index, point) in data.enumerated() {
-                    let x = CGFloat(index) * stepX
-                    let y = geo.size.height - (CGFloat(point.medianLatency / maxLatency) * geo.size.height)
+        if data.isEmpty {
+            Text("No data")
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart {
+                ForEach(data) { point in
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Minutes", point.medianLatency / 60)
+                    )
+                    .foregroundStyle(Color.accentColor)
+                    .interpolationMethod(.catmullRom)
                     
-                    if index == 0 {
-                        path.move(to: CGPoint(x: x, y: y))
-                    } else {
-                        path.addLine(to: CGPoint(x: x, y: y))
-                    }
+                    AreaMark(
+                        x: .value("Date", point.date),
+                        y: .value("Minutes", point.medianLatency / 60)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.2), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                 }
             }
-            .stroke(Color.accentColor, lineWidth: 2)
+            .chartYAxisLabel("min")
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .day)) { _ in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.weekday(.abbreviated))
+                }
+            }
         }
     }
 }
