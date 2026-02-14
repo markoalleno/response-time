@@ -10,6 +10,7 @@ struct ContactsView: View {
     
     @State private var searchText = ""
     @State private var sortBy: SortOption = .responseTime
+    @AppStorage("favoriteContacts") private var favoriteContactsJSON: String = "[]"
     @State private var selectedContact: iMessageConnector.ContactStats?
     @State private var showGroups = false
     @State private var serviceFilter: ServiceFilter = .all
@@ -355,7 +356,17 @@ struct ContactsView: View {
     private var contactList: some View {
         LazyVStack(spacing: 8) {
             ForEach(sortedContacts) { contact in
-                RealContactRow(contact: contact, resolvedName: contactNames[contact.identifier])
+                RealContactRow(contact: contact, resolvedName: contactNames[contact.identifier], isFavorite: favoriteIds.contains(contact.identifier))
+                    .contextMenu {
+                        Button {
+                            toggleFavorite(contact.identifier)
+                        } label: {
+                            Label(
+                                favoriteIds.contains(contact.identifier) ? "Remove from Favorites" : "Add to Favorites",
+                                systemImage: favoriteIds.contains(contact.identifier) ? "star.slash" : "star"
+                            )
+                        }
+                    }
                     .onTapGesture {
                         selectedContact = contact
                     }
@@ -392,6 +403,20 @@ struct ContactsView: View {
         return result
     }
     
+    private var favoriteIds: Set<String> {
+        Set((try? JSONDecoder().decode([String].self, from: Data(favoriteContactsJSON.utf8))) ?? [])
+    }
+    
+    private func toggleFavorite(_ id: String) {
+        var favs = (try? JSONDecoder().decode([String].self, from: Data(favoriteContactsJSON.utf8))) ?? []
+        if favs.contains(id) {
+            favs.removeAll { $0 == id }
+        } else {
+            favs.append(id)
+        }
+        favoriteContactsJSON = (try? String(data: JSONEncoder().encode(favs), encoding: .utf8)) ?? "[]"
+    }
+    
     private var sortedContacts: [iMessageConnector.ContactStats] {
         var result = filteredContacts
         
@@ -406,7 +431,11 @@ struct ContactsView: View {
             result.sort { ($0.lastMessageDate ?? .distantPast) > ($1.lastMessageDate ?? .distantPast) }
         }
         
-        return result
+        // Pin favorites to top
+        let favs = favoriteIds
+        let favorites = result.filter { favs.contains($0.identifier) }
+        let others = result.filter { !favs.contains($0.identifier) }
+        return favorites + others
     }
     
     private var filteredGroups: [iMessageConnector.ConversationData] {
@@ -465,6 +494,7 @@ struct ContactSummaryCard: View {
 struct RealContactRow: View {
     let contact: iMessageConnector.ContactStats
     var resolvedName: String? = nil
+    var isFavorite: Bool = false
     
     private var cardBackgroundColor: Color {
         #if os(macOS)
@@ -489,6 +519,11 @@ struct RealContactRow: View {
             // Info
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
+                    if isFavorite {
+                        Image(systemName: "star.fill")
+                            .foregroundColor(.yellow)
+                            .font(.caption)
+                    }
                     Text(displayName)
                         .font(.headline)
                         .lineLimit(1)
