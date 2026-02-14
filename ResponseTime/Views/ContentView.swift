@@ -110,9 +110,12 @@ struct ContentView: View {
                 let isStale = lastSync == nil || Date().timeIntervalSince(lastSync!) > 1800 // 30 min
                 
                 if isStale {
-                    // Delay 500ms to let first frame render
-                    try? await Task.sleep(for: .milliseconds(500))
-                    await performSync()
+                    // Run sync in lower-priority background task so it doesn't block this .task
+                    Task(priority: .background) {
+                        // Delay 500ms to let first frame render
+                        try? await Task.sleep(for: .milliseconds(500))
+                        await performSync()
+                    }
                 }
             }
         }
@@ -374,6 +377,12 @@ struct DashboardView: View {
                 
                 // Time range selector
                 timeRangePicker
+                
+                // Loading indicator
+                if isLoadingData {
+                    ProgressView("Loading analytics...")
+                        .padding()
+                }
                 
                 // Main dashboard grid
                 #if os(macOS)
