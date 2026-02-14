@@ -537,8 +537,11 @@ struct DashboardView: View {
                     
                     VStack(spacing: 6) {
                         ScoreBar(label: "Speed", value: score.speedScore, color: .blue)
+                            .help("How quickly you respond relative to your 1-hour target")
                         ScoreBar(label: "Consistency", value: score.consistencyScore, color: .purple)
+                            .help("How consistent your response times are (low variance = high score)")
                         ScoreBar(label: "Coverage", value: score.coverageScore, color: .green)
+                            .help("Percentage of responses within your target time")
                     }
                 }
             }
