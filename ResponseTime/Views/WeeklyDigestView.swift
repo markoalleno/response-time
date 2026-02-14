@@ -62,6 +62,9 @@ struct WeeklyDigestView: View {
                 if weekWindows.isEmpty {
                     emptyWeek
                 } else {
+                    // Week score
+                    weekScoreCard
+                    
                     // Summary hero
                     summaryHero
                     
@@ -117,6 +120,59 @@ struct WeeklyDigestView: View {
         formatter.dateFormat = "MMM d"
         let end = calendar.date(byAdding: .day, value: 6, to: weekStart)!
         return "\(formatter.string(from: weekStart)) – \(formatter.string(from: end))"
+    }
+    
+    // MARK: - Week Score Card
+    
+    private var weekScoreCard: some View {
+        let score = ResponseScore.compute(from: weekWindows)
+        let prevScore = ResponseScore.compute(from: previousWeekWindows)
+        let change = score.overall - prevScore.overall
+        
+        return HStack(spacing: 24) {
+            VStack(spacing: 4) {
+                Text(score.grade)
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .foregroundColor(gradeColor(score.gradeColor))
+                Text("Week Score")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            VStack(alignment: .leading, spacing: 8) {
+                ScoreBar(label: "Speed", value: score.speedScore, color: .blue)
+                ScoreBar(label: "Consistency", value: score.consistencyScore, color: .purple)
+                ScoreBar(label: "Coverage", value: score.coverageScore, color: .green)
+            }
+            
+            if prevScore.overall > 0 {
+                VStack(spacing: 4) {
+                    HStack(spacing: 2) {
+                        Image(systemName: change > 0 ? "arrow.up" : change < 0 ? "arrow.down" : "minus")
+                        Text("\(abs(change))")
+                    }
+                    .font(.title2.bold())
+                    .foregroundColor(change > 0 ? .green : change < 0 ? .red : .secondary)
+                    Text("vs last week")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    private func gradeColor(_ name: String) -> Color {
+        switch name {
+        case "green": return .green
+        case "yellow": return .yellow
+        case "orange": return .orange
+        case "red": return .red
+        default: return .secondary
+        }
     }
     
     // MARK: - Summary Hero
