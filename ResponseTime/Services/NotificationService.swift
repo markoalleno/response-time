@@ -37,6 +37,15 @@ final class NotificationService: Sendable {
         return settings.authorizationStatus
     }
     
+    // MARK: - Quiet Hours Check
+    
+    func isInQuietHours() -> Bool {
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: Date())
+        // Default quiet hours: 10 PM to 7 AM
+        return hour >= 22 || hour < 7
+    }
+    
     // MARK: - Threshold Notifications
     
     /// Sends a notification when response time exceeds threshold
