@@ -11,6 +11,7 @@ struct AnalyticsView: View {
     
     @State private var selectedChart: ChartType = .trend
     @State private var hoveredPoint: DailyMetrics?
+    @State private var contactFilter: String = ""
     
     enum ChartType: String, CaseIterable, Identifiable {
         case trend = "Trend"
@@ -85,8 +86,16 @@ struct AnalyticsView: View {
                 }
                 #endif
                 
-                // Time range
-                timeRangePicker
+                // Time range + filter
+                HStack {
+                    timeRangePicker
+                    
+                    Spacer()
+                    
+                    TextField("Filter by contact...", text: $contactFilter)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 200)
+                }
                 
                 // Main chart
                 chartContent
@@ -112,6 +121,17 @@ struct AnalyticsView: View {
         #else
         return 16
         #endif
+    }
+    
+    private var filteredWindows: [ResponseWindow] {
+        if contactFilter.isEmpty {
+            return Array(responseWindows)
+        }
+        let query = contactFilter.lowercased()
+        return responseWindows.filter { window in
+            guard let email = window.inboundEvent?.participantEmail else { return false }
+            return email.lowercased().contains(query)
+        }
     }
     
     private var chartHeight: CGFloat {
