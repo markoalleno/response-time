@@ -62,6 +62,11 @@ struct GoalsView: View {
                     }
                 }
                 
+                // Streak summary
+                if !goals.isEmpty {
+                    streakSummaryCard
+                }
+                
                 // Suggested goals
                 if goals.count < 3 {
                     suggestedGoalsSection
@@ -230,6 +235,118 @@ struct GoalsView: View {
         )
         modelContext.insert(goal)
         try? modelContext.save()
+    }
+    
+    private var streakSummaryCard: some View {
+        let streakData = computeStreaks()
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "flame.fill")
+                    .foregroundColor(.orange)
+                Text("Streaks")
+                    .font(.headline)
+                Spacer()
+            }
+            
+            HStack(spacing: 24) {
+                VStack(spacing: 4) {
+                    Text("\(streakData.current)")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(streakData.current > 0 ? .orange : .secondary)
+                    Text("Current streak")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                VStack(spacing: 4) {
+                    Text("\(streakData.longest)")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(.accentColor)
+                    Text("Best streak")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                // Last 7 days visualization
+                VStack(spacing: 4) {
+                    HStack(spacing: 3) {
+                        ForEach(streakData.last7Days, id: \.offset) { day in
+                            Circle()
+                                .fill(day.metGoal ? Color.green : day.hadData ? Color.red : Color.secondary.opacity(0.2))
+                                .frame(width: 14, height: 14)
+                        }
+                    }
+                    Text("Last 7 days")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
+    }
+    
+    private struct StreakData {
+        var current: Int
+        var longest: Int
+        var last7Days: [(offset: Int, metGoal: Bool, hadData: Bool)]
+    }
+    
+    private func computeStreaks() -> StreakData {
+        let calendar = Calendar.current
+        let valid = responseWindows.filter(\.isValidForAnalytics)
+        let target = goals.filter(\.isEnabled).map(\.targetLatencySeconds).min() ?? 3600
+        
+        // Group windows by day
+        var dayResults: [Date: Bool] = [:]
+        var dayHasData: Set<Date> = []
+        
+        for window in valid {
+            guard let t = window.inboundEvent?.timestamp else { continue }
+            let day = calendar.startOfDay(for: t)
+            dayHasData.insert(day)
+            let currentResult = dayResults[day] ?? true
+            dayResults[day] = currentResult && (window.latencySeconds <= target)
+        }
+        
+        // Compute current streak (consecutive days meeting goal, ending today or yesterday)
+        var current = 0
+        var checkDate = calendar.startOfDay(for: Date())
+        // Allow starting from yesterday if today has no data
+        if dayResults[checkDate] == nil {
+            checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
+        }
+        while let met = dayResults[checkDate], met {
+            current += 1
+            checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
+        }
+        
+        // Compute longest streak
+        let sortedDays = dayResults.keys.sorted()
+        var longest = 0
+        var streak = 0
+        for day in sortedDays {
+            if dayResults[day] == true {
+                streak += 1
+                longest = max(longest, streak)
+            } else {
+                streak = 0
+            }
+        }
+        
+        // Last 7 days
+        let today = calendar.startOfDay(for: Date())
+        let last7 = (0..<7).reversed().map { offset -> (offset: Int, metGoal: Bool, hadData: Bool) in
+            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            let hadData = dayHasData.contains(day)
+            let metGoal = dayResults[day] ?? false
+            return (offset: offset, metGoal: metGoal, hadData: hadData)
+        }
+        
+        return StreakData(current: current, longest: longest, last7Days: last7)
     }
     
     private func deleteGoal(_ goal: ResponseGoal) {

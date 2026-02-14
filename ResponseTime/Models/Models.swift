@@ -248,6 +248,11 @@ final class ResponseGoal {
     var workingHoursOnly: Bool = false
     var notifyWhenExceeded: Bool = false
     
+    // Streak tracking
+    var currentStreak: Int = 0
+    var longestStreak: Int = 0
+    var lastStreakDate: Date?
+    
     init(
         id: UUID = UUID(),
         platform: Platform? = nil,
