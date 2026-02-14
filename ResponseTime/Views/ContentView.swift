@@ -125,7 +125,9 @@ struct ContentView: View {
             
             // Defer auto-sync slightly to allow UI to render first
             // Only sync if user has enabled sync on launch AND data is stale
-            if UserDefaults.standard.bool(forKey: "syncOnLaunch") {
+            // Default syncOnLaunch to true (UserDefaults.bool returns false if unset)
+            let syncOnLaunch = UserDefaults.standard.object(forKey: "syncOnLaunch") as? Bool ?? true
+            if syncOnLaunch {
                 let lastSync = appState.lastSyncDate
                 let isStale = lastSync == nil || Date().timeIntervalSince(lastSync!) > 1800 // 30 min
                 

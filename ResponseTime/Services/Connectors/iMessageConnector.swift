@@ -508,6 +508,7 @@ actor iMessageConnector {
     // MARK: - Sync (Legacy)
     
     func sync(since checkpoint: Date? = nil, limit: Int = 5000) async throws -> iMessageSyncResult {
+        debugLog("🔌 [CONNECTOR] Opening database at \(dbPath)...")
         let db = try openDatabase()
         defer { sqlite3_close(db) }
         
@@ -527,9 +528,13 @@ actor iMessageConnector {
         if let since = checkpoint {
             let coreDataNanos = Int64((since.timeIntervalSince1970 - Self.coreDataEpoch) * 1_000_000_000)
             query += " AND m.date > \(coreDataNanos)"
+            debugLog("🔌 [CONNECTOR] Fetching messages since \(since)")
+        } else {
+            debugLog("🔌 [CONNECTOR] Fetching ALL messages (no checkpoint)")
         }
         
         query += " ORDER BY m.date DESC LIMIT \(limit)"
+        debugLog("🔌 [CONNECTOR] Query limit: \(limit)")
         
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
@@ -538,6 +543,9 @@ actor iMessageConnector {
         defer { sqlite3_finalize(statement) }
         
         var events: [MessageEventData] = []
+        var inboundCount = 0
+        var outboundCount = 0
+        var unknownParticipantCount = 0
         
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let guidRaw = sqlite3_column_text(statement, 0) else { continue }
@@ -550,20 +558,36 @@ actor iMessageConnector {
             let participantRaw = sqlite3_column_text(statement, 4)
             let participant = participantRaw.map { String(cString: $0) } ?? "unknown"
             
+            if participant == "unknown" {
+                unknownParticipantCount += 1
+            }
+            
             let threadOriginatorRaw = sqlite3_column_text(statement, 5)
             let threadOriginator = threadOriginatorRaw.map { String(cString: $0) }
             
             let timestamp = Date(timeIntervalSince1970: Self.coreDataEpoch + Double(dateNanos) / 1_000_000_000)
             
+            let direction: MessageDirection = isFromMe ? .outbound : .inbound
+            if direction == .inbound {
+                inboundCount += 1
+            } else {
+                outboundCount += 1
+            }
+            
             let event = MessageEventData(
                 id: guid,
                 handleId: String(handleId),
                 timestamp: timestamp,
-                direction: isFromMe ? .outbound : .inbound,
+                direction: direction,
                 participantId: participant,
                 threadOriginatorGuid: threadOriginator
             )
             events.append(event)
+        }
+        
+        debugLog("🔌 [CONNECTOR] Fetched \(events.count) events: 📥 \(inboundCount) inbound, 📤 \(outboundCount) outbound")
+        if unknownParticipantCount > 0 {
+            debugLog("⚠️  [CONNECTOR] \(unknownParticipantCount) messages with unknown participant (group chats?)")
         }
         
         return iMessageSyncResult(

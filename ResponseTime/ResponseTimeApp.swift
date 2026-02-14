@@ -12,6 +12,7 @@ struct ResponseTimeApp: App {
     #endif
     
     var sharedModelContainer: ModelContainer = {
+        debugLog("🏗️ [INIT] Creating ModelContainer...")
         let schema = Schema([
             SourceAccount.self,
             Conversation.self,
@@ -22,13 +23,19 @@ struct ResponseTimeApp: App {
             UserPreferences.self,
             DismissedPending.self
         ])
+        debugLog("🏗️ [INIT] Schema created with \(schema.entities.count) entities")
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false
         )
+        debugLog("🏗️ [INIT] Configuration created (isStoredInMemoryOnly: false)")
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            debugLog("✅ [INIT] ModelContainer created successfully!")
+            debugLog("📍 [INIT] Store URL: \(configuration.url.path)")
+            return container
         } catch {
+            debugLog("❌ [INIT] ModelContainer creation failed: \(error)")
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()

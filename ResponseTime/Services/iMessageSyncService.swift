@@ -15,20 +15,36 @@ final class iMessageSyncService: Sendable {
     /// Syncs iMessage data using a background ModelContext.
     /// Call from any actor — this creates its own context from the container.
     func syncToSwiftData(container: ModelContainer) async throws {
+        debugLog("🔄 [SYNC] Starting iMessage sync...")
+        
         // Pre-load contact names on main actor before background work
+        debugLog("👤 [SYNC] Requesting contact access...")
         _ = await ContactResolver.shared.requestAccessAndLoad()
+        debugLog("👤 [SYNC] Contact access complete")
         
         // Fetch raw messages from chat.db (this is I/O, fine off main)
         // We need the checkpoint from the existing account, fetch it in background context
+        debugLog("💾 [SYNC] Creating background ModelContext...")
         let backgroundContext = ModelContext(container)
         backgroundContext.autosaveEnabled = false
+        debugLog("💾 [SYNC] Background context created")
         
         // Get or create the iMessage source account
         let sourceAccount = try getOrCreateSourceAccount(modelContext: backgroundContext)
+        debugLog("📱 [SYNC] Source account checkpoint: \(sourceAccount.syncCheckpoint ?? Date.distantPast)")
         
-        let syncResult = try await connector.sync(since: sourceAccount.syncCheckpoint, limit: 10000)
+        debugLog("🔌 [SYNC] Calling connector.sync()...")
+        let syncResult: iMessageConnector.iMessageSyncResult
+        do {
+            syncResult = try await connector.sync(since: sourceAccount.syncCheckpoint, limit: 10000)
+            debugLog("📊 [SYNC] Fetched \(syncResult.messageEvents.count) raw message events from chat.db")
+        } catch {
+            debugLog("❌ [SYNC] Connector.sync() failed: \(error)")
+            throw error
+        }
         
         guard !syncResult.messageEvents.isEmpty else {
+            debugLog("⚠️ [SYNC] No messages found, updating checkpoint and returning")
             sourceAccount.syncCheckpoint = Date()
             sourceAccount.updatedAt = Date()
             try backgroundContext.save()
@@ -41,9 +57,14 @@ final class iMessageSyncService: Sendable {
             let key = event.participantId  // phone/email of the other person
             handleGroups[key, default: []].append(event)
         }
+        debugLog("👥 [SYNC] Grouped into \(handleGroups.count) conversations")
+        
+        var totalEventsCreated = 0
+        var totalEventsSkipped = 0
         
         // Process each handle group
         for (participantId, events) in handleGroups {
+            debugLog("💬 [SYNC] Processing conversation with \(participantId): \(events.count) messages")
             // Get or create conversation
             let conversationId = "imessage_\(participantId)"
             let conversation = try getOrCreateConversation(
@@ -69,12 +90,16 @@ final class iMessageSyncService: Sendable {
             
             // Create MessageEvents (skip duplicates)
             let sortedEvents = events.sorted { $0.timestamp < $1.timestamp }
+            var inboundCount = 0
+            var outboundCount = 0
+            
             for eventData in sortedEvents {
                 let eventId = eventData.id
                 let existingDescriptor = FetchDescriptor<MessageEvent>(
                     predicate: #Predicate { $0.id == eventId }
                 )
                 if let _ = try? backgroundContext.fetch(existingDescriptor).first {
+                    totalEventsSkipped += 1
                     continue  // Already exists
                 }
                 
@@ -86,7 +111,16 @@ final class iMessageSyncService: Sendable {
                     participantEmail: eventData.participantId
                 )
                 backgroundContext.insert(messageEvent)
+                totalEventsCreated += 1
+                
+                if eventData.direction == .inbound {
+                    inboundCount += 1
+                } else {
+                    outboundCount += 1
+                }
             }
+            
+            debugLog("   📥 Inbound: \(inboundCount), 📤 Outbound: \(outboundCount)")
             
             // Update last activity
             if let lastEvent = sortedEvents.last {
@@ -94,7 +128,10 @@ final class iMessageSyncService: Sendable {
             }
         }
         
+        debugLog("✅ [SYNC] Created \(totalEventsCreated) new MessageEvents (skipped \(totalEventsSkipped) duplicates)")
+        
         // Compute response windows for all iMessage conversations
+        debugLog("🧮 [SYNC] Computing response windows...")
         try computeResponseWindows(for: sourceAccount, modelContext: backgroundContext)
         
         // Update checkpoint
@@ -102,20 +139,38 @@ final class iMessageSyncService: Sendable {
         sourceAccount.updatedAt = Date()
         
         // Single save at the end — main context auto-merges
+        debugLog("💾 [SYNC] Saving background context...")
         try backgroundContext.save()
+        debugLog("✅ [SYNC] Sync complete! Context saved successfully.")
     }
     
     // MARK: - Compute Response Windows
     
     private func computeResponseWindows(for account: SourceAccount, modelContext: ModelContext) throws {
+        var totalWindows = 0
+        var totalConversationsProcessed = 0
+        var totalConversationsSkipped = 0
+        
+        debugLog("   📋 [COMPUTE] Account has \(account.conversations.count) conversations")
+        
         for conversation in account.conversations {
-            guard !conversation.isExcluded else { continue }
+            guard !conversation.isExcluded else {
+                totalConversationsSkipped += 1
+                continue
+            }
             
             let events = conversation.messageEvents.sorted { $0.timestamp < $1.timestamp }
-            guard events.count >= 2 else { continue }
+            guard events.count >= 2 else {
+                debugLog("   ⏭️  Skipping conversation \(conversation.subject ?? "unknown"): only \(events.count) events")
+                continue
+            }
+            
+            totalConversationsProcessed += 1
+            debugLog("   🔍 [COMPUTE] Processing \(conversation.subject ?? "unknown"): \(events.count) events")
             
             // Find inbound→outbound pairs
             var lastInbound: MessageEvent?
+            var windowsForConversation = 0
             
             for event in events {
                 if event.direction == .inbound && !event.isExcluded {
@@ -169,30 +224,45 @@ final class iMessageSyncService: Sendable {
                     window.isWorkingHours = (weekday >= 2 && weekday <= 6) && (hour >= 9 && hour < 17)
                     
                     modelContext.insert(window)
+                    windowsForConversation += 1
+                    totalWindows += 1
                     lastInbound = nil
                 }
             }
+            
+            if windowsForConversation > 0 {
+                debugLog("      ✨ Created \(windowsForConversation) response windows")
+            }
         }
+        
+        debugLog("📈 [COMPUTE] Total: \(totalWindows) response windows created across \(totalConversationsProcessed) conversations (skipped \(totalConversationsSkipped))")
     }
     
     // MARK: - Helpers
     
     private func getOrCreateSourceAccount(modelContext: ModelContext) throws -> SourceAccount {
-        let targetPlatform = Platform.imessage
-        let descriptor = FetchDescriptor<SourceAccount>(
-            predicate: #Predicate { $0.platform == targetPlatform }
-        )
+        debugLog("📂 [SYNC] Getting or creating source account...")
         
-        if let existing = try modelContext.fetch(descriptor).first {
+        // Fetch all source accounts without predicate (workaround for background context hang)
+        debugLog("📂 [SYNC] Fetching all source accounts...")
+        let descriptor = FetchDescriptor<SourceAccount>()
+        let allAccounts = try modelContext.fetch(descriptor)
+        debugLog("📂 [SYNC] Fetched \(allAccounts.count) source accounts")
+        
+        // Filter for iMessage account manually
+        if let existing = allAccounts.first(where: { $0.platform == .imessage }) {
+            debugLog("📂 [SYNC] Found existing iMessage account")
             return existing
         }
         
+        debugLog("📂 [SYNC] Creating new iMessage source account...")
         let account = SourceAccount(
             platform: .imessage,
             displayName: "iMessage",
             isEnabled: true
         )
         modelContext.insert(account)
+        debugLog("📂 [SYNC] Source account created")
         return account
     }
     
