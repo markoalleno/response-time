@@ -265,6 +265,7 @@ struct DashboardView: View {
     
     @State private var metrics: ResponseMetrics?
     @State private var dailyData: [DailyMetrics] = []
+    @State private var pendingContacts: [(name: String, identifier: String, waitingSince: Date)] = []
     
     var body: some View {
         ScrollView {
@@ -294,6 +295,9 @@ struct DashboardView: View {
                     goalsCard
                 }
                 #endif
+                
+                // Pending responses (actionable)
+                pendingResponsesSection
                 
                 // Recent activity
                 recentActivitySection
@@ -516,6 +520,62 @@ struct DashboardView: View {
         }
     }
     
+    private var pendingResponsesSection: some View {
+        Group {
+            if !pendingContacts.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "exclamationmark.bubble.fill")
+                            .foregroundColor(.orange)
+                        Text("Pending Responses")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(pendingContacts.count)")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.2))
+                            .foregroundColor(.orange)
+                            .cornerRadius(8)
+                    }
+                    
+                    ForEach(pendingContacts.prefix(5), id: \.identifier) { pending in
+                        HStack {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.orange.opacity(0.15))
+                                    .frame(width: 36, height: 36)
+                                Text(String(pending.name.prefix(1)).uppercased())
+                                    .font(.headline)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pending.name)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                Text("Waiting \(pending.waitingSince, style: .relative)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            let wait = Date().timeIntervalSince(pending.waitingSince)
+                            Text(formatDuration(wait))
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(wait > 3600 ? .red : wait > 1800 ? .orange : .yellow)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding()
+                .background(cardBackgroundColor)
+                .cornerRadius(12)
+            }
+        }
+    }
+    
     private var recentActivitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -613,6 +673,43 @@ struct DashboardView: View {
                 metrics = nil
                 dailyData = []
             }
+        }
+        
+        // Load pending responses
+        await loadPendingResponses()
+    }
+    
+    private func loadPendingResponses() async {
+        let connector = iMessageConnector()
+        do {
+            let conversations = try await connector.fetchAllConversations(days: 7)
+            let pending = conversations
+                .filter { $0.pendingResponse && !$0.isGroupChat }
+                .compactMap { conv -> (name: String, identifier: String, waitingSince: Date)? in
+                    guard let lastDate = conv.lastMessageDate else { return nil }
+                    let name = conv.displayName ?? conv.participants.first?.displayIdentifier ?? conv.chatIdentifier
+                    return (name: name, identifier: conv.chatIdentifier, waitingSince: lastDate)
+                }
+                .sorted { $0.waitingSince < $1.waitingSince } // oldest first
+            
+            // Resolve names
+            let resolver = ContactResolver.shared
+            _ = await resolver.requestAccessAndLoad()
+            
+            var resolved: [(name: String, identifier: String, waitingSince: Date)] = []
+            for p in pending {
+                if let realName = await resolver.resolve(p.name) {
+                    resolved.append((name: realName, identifier: p.identifier, waitingSince: p.waitingSince))
+                } else {
+                    resolved.append(p)
+                }
+            }
+            
+            await MainActor.run {
+                pendingContacts = resolved
+            }
+        } catch {
+            // Silently fail — pending is supplementary
         }
     }
 }
