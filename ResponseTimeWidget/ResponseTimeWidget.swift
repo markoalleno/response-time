@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import SQLite3
 
 // MARK: - Widget Entry
 
@@ -79,20 +80,104 @@ struct Provider: AppIntentTimelineProvider {
     }
     
     private func loadMetrics(configuration: ConfigurationAppIntent) async -> ResponseTimeEntry {
-        // In production, this would read from shared SwiftData container
-        // For now, return sample data
+        // Try to read real iMessage stats
+        let days: Int
+        switch configuration.timeRange {
+        case .today: days = 1
+        case .week: days = 7
+        case .month: days = 30
+        }
         
+        if let stats = readIMessageStats(days: days) {
+            return ResponseTimeEntry(
+                date: Date(),
+                medianResponseTime: stats.median,
+                goalProgress: stats.goalProgress,
+                platformBreakdown: [(.imessage, stats.median)],
+                timeRange: configuration.timeRange,
+                showPlatforms: configuration.showPlatforms
+            )
+        }
+        
+        // Fallback: no data
         return ResponseTimeEntry(
             date: Date(),
-            medianResponseTime: Double.random(in: 1800...5400),
-            goalProgress: Double.random(in: 0.6...0.95),
-            platformBreakdown: [
-                (.gmail, Double.random(in: 2400...4800)),
-                (.slack, Double.random(in: 600...1800))
-            ],
+            medianResponseTime: 0,
+            goalProgress: 0,
+            platformBreakdown: [],
             timeRange: configuration.timeRange,
             showPlatforms: configuration.showPlatforms
         )
+    }
+    
+    private struct QuickStats {
+        let median: TimeInterval
+        let goalProgress: Double
+    }
+    
+    private func readIMessageStats(days: Int) -> QuickStats? {
+        let dbPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Messages/chat.db").path
+        
+        guard FileManager.default.isReadableFile(atPath: dbPath) else { return nil }
+        
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let database = db else { return nil }
+        defer { sqlite3_close(database) }
+        
+        let coreDataEpoch: TimeInterval = 978307200
+        let sinceDate = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let coreDataNanos = Int64((sinceDate.timeIntervalSince1970 - coreDataEpoch) * 1_000_000_000)
+        
+        // Get messages grouped by handle, compute response times
+        let query = """
+            SELECT m.handle_id, m.date, m.is_from_me
+            FROM message m
+            WHERE m.date > \(coreDataNanos)
+              AND m.item_type = 0
+              AND m.handle_id > 0
+            ORDER BY m.handle_id, m.date ASC
+        """
+        
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(database, query, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        
+        var messagesByHandle: [Int64: [(date: Date, isFromMe: Bool)]] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let handleId = sqlite3_column_int64(stmt, 0)
+            let dateNanos = sqlite3_column_int64(stmt, 1)
+            let isFromMe = sqlite3_column_int(stmt, 2) == 1
+            let date = Date(timeIntervalSince1970: coreDataEpoch + Double(dateNanos) / 1_000_000_000)
+            messagesByHandle[handleId, default: []].append((date, isFromMe))
+        }
+        
+        var responseTimes: [TimeInterval] = []
+        for (_, messages) in messagesByHandle {
+            var lastInbound: Date?
+            for msg in messages {
+                if !msg.isFromMe {
+                    lastInbound = msg.date
+                } else if let inbound = lastInbound {
+                    let latency = msg.date.timeIntervalSince(inbound)
+                    if latency > 0 && latency < 7 * 86400 {
+                        responseTimes.append(latency)
+                    }
+                    lastInbound = nil
+                }
+            }
+        }
+        
+        guard !responseTimes.isEmpty else { return nil }
+        
+        let sorted = responseTimes.sorted()
+        let median = sorted[sorted.count / 2]
+        let target: TimeInterval = 3600
+        let withinTarget = sorted.filter { $0 <= target }.count
+        let goalProgress = Double(withinTarget) / Double(sorted.count)
+        
+        return QuickStats(median: median, goalProgress: goalProgress)
     }
 }
 
