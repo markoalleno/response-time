@@ -623,6 +623,43 @@ final class ResponseAnalyzerTests: XCTestCase {
         XCTAssertFalse(dismissed.isActive) // No snooze date = not active
     }
     
+    // MARK: - Goal Streak Logic
+    
+    func testGoalStreakInit() {
+        let goal = ResponseGoal(platform: .imessage, targetLatencySeconds: 1800)
+        modelContext.insert(goal)
+        
+        XCTAssertEqual(goal.currentStreak, 0)
+        XCTAssertEqual(goal.longestStreak, 0)
+        XCTAssertNil(goal.lastStreakDate)
+        XCTAssertEqual(goal.targetLatencySeconds, 1800)
+        XCTAssertTrue(goal.isEnabled)
+    }
+    
+    func testGoalStreakManualUpdate() {
+        let goal = ResponseGoal(platform: nil, targetLatencySeconds: 3600)
+        modelContext.insert(goal)
+        
+        goal.currentStreak = 5
+        goal.longestStreak = 10
+        goal.lastStreakDate = Date()
+        
+        XCTAssertEqual(goal.currentStreak, 5)
+        XCTAssertEqual(goal.longestStreak, 10)
+        XCTAssertNotNil(goal.lastStreakDate)
+    }
+    
+    func testGoalFormattedTarget() {
+        let goal = ResponseGoal(targetLatencySeconds: 3600)
+        modelContext.insert(goal)
+        XCTAssertEqual(goal.formattedTarget, formatDuration(3600))
+        XCTAssertEqual(goal.targetMinutes, 60)
+        
+        let goal2 = ResponseGoal(targetLatencySeconds: 1800)
+        modelContext.insert(goal2)
+        XCTAssertEqual(goal2.targetMinutes, 30)
+    }
+    
     // MARK: - Multiple Response Windows
     
     func testMultipleResponseWindowsInConversation() {
