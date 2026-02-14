@@ -103,8 +103,18 @@ struct ContentView: View {
             if analyzer.workingHoursEnd == 0 { analyzer.workingHoursEnd = 17 }
             analyzer.excludeWeekends = UserDefaults.standard.bool(forKey: "excludeWeekends")
             
-            // Auto-sync iMessage on launch
-            await performSync()
+            // Defer auto-sync slightly to allow UI to render first
+            // Only sync if user has enabled sync on launch AND data is stale
+            if UserDefaults.standard.bool(forKey: "syncOnLaunch") {
+                let lastSync = appState.lastSyncDate
+                let isStale = lastSync == nil || Date().timeIntervalSince(lastSync!) > 1800 // 30 min
+                
+                if isStale {
+                    // Delay 500ms to let first frame render
+                    try? await Task.sleep(for: .milliseconds(500))
+                    await performSync()
+                }
+            }
         }
         .sheet(isPresented: Binding(
             get: { appState.isOnboarding },
@@ -347,13 +357,14 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     
     @Query private var accounts: [SourceAccount]
-    @Query(sort: \ResponseWindow.computedAt, order: .reverse)
-    private var recentResponses: [ResponseWindow]
+    @Query private var dismissedPending: [DismissedPending]
     
+    // Don't load all windows at startup — fetch on demand
+    @State private var recentResponses: [ResponseWindow] = []
     @State private var metrics: ResponseMetrics?
     @State private var dailyData: [DailyMetrics] = []
     @State private var pendingContacts: [(name: String, identifier: String, waitingSince: Date)] = []
-    @Query private var dismissedPending: [DismissedPending]
+    @State private var isLoadingData = false
     
     var body: some View {
         ScrollView {
@@ -1054,21 +1065,51 @@ struct DashboardView: View {
     }
     
     private func loadMetrics() async {
-        // Check if we have real data or should show demo
-        let hasRealData = !recentResponses.isEmpty
+        isLoadingData = true
+        defer { isLoadingData = false }
         
-        if hasRealData {
+        // Fetch response windows — filter by validity and time range
+        // Note: Can't use relationship traversal in predicates, so fetch all valid and filter in-memory
+        let windowsDescriptor = FetchDescriptor<ResponseWindow>(
+            predicate: #Predicate { window in
+                window.isValidForAnalytics
+            },
+            sortBy: [SortDescriptor(\.computedAt, order: .reverse)]
+        )
+        
+        guard let allWindows = try? modelContext.fetch(windowsDescriptor) else {
+            await MainActor.run {
+                recentResponses = []
+                metrics = nil
+                dailyData = []
+            }
+            await loadPendingResponses()
+            return
+        }
+        
+        // Filter by time range in-memory (can't do in predicate due to optional chaining)
+        let startDate = appState.selectedTimeRange.startDate
+        let windows = allWindows.filter { window in
+            guard let timestamp = window.inboundEvent?.timestamp else { return false }
+            return timestamp >= startDate
+        }
+        
+        await MainActor.run {
+            recentResponses = windows
+        }
+        
+        if !windows.isEmpty {
             // Compute real metrics from response windows
             let analyzer = ResponseAnalyzer.shared
             let realMetrics = analyzer.computeMetrics(
-                for: recentResponses.map { $0 },
+                for: windows,
                 platform: appState.selectedPlatform,
                 timeRange: appState.selectedTimeRange
             )
             await MainActor.run {
                 metrics = realMetrics
                 dailyData = analyzer.computeDailyMetrics(
-                    windows: recentResponses.map { $0 },
+                    windows: windows,
                     platform: appState.selectedPlatform,
                     timeRange: appState.selectedTimeRange
                 )
