@@ -55,12 +55,23 @@ struct OnboardingView: View {
                         currentPage += 1
                     }
                     .buttonStyle(.borderedProminent)
-                } else {
-                    Button("Get Started") {
+                } else if setupComplete {
+                    Button("Open Dashboard") {
                         appState.isOnboarding = false
                         dismiss()
                     }
                     .buttonStyle(.borderedProminent)
+                } else if hasPermission && !isSettingUp {
+                    Button("Set Up & Sync") {
+                        setupAndSync()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if !isSettingUp {
+                    Button("Skip for Now") {
+                        appState.isOnboarding = false
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             .padding()
@@ -192,42 +203,113 @@ struct OnboardingView: View {
     
     // MARK: - Complete Page
     
+    @State private var hasPermission = false
+    @State private var isSettingUp = false
+    @State private var setupComplete = false
+    
     private var completePage: some View {
         VStack(spacing: 24) {
             Spacer()
             
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.green)
-            
-            Text("You're All Set!")
-                .font(.largeTitle.bold())
-            
-            Text("Connect a platform to start tracking your response times")
-                .font(.title3)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                NextStepRow(
-                    number: 1,
-                    text: "Connect your first platform (Gmail, Outlook, or Slack)"
-                )
-                NextStepRow(
-                    number: 2,
-                    text: "Wait for initial sync to complete"
-                )
-                NextStepRow(
-                    number: 3,
-                    text: "View your response time insights on the dashboard"
-                )
+            if setupComplete {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.green)
+                
+                Text("You're All Set!")
+                    .font(.largeTitle.bold())
+                
+                Text("iMessage is connected and syncing. Your response time data will appear on the dashboard momentarily.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            } else if isSettingUp {
+                ProgressView()
+                    .controlSize(.large)
+                
+                Text("Setting up...")
+                    .font(.title2.bold())
+                
+                Text("Creating iMessage connection and running first sync")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+            } else {
+                Image(systemName: hasPermission ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    .font(.system(size: 64))
+                    .foregroundColor(hasPermission ? .green : .orange)
+                
+                Text(hasPermission ? "Ready to Go!" : "One More Step")
+                    .font(.largeTitle.bold())
+                
+                if hasPermission {
+                    Text("iMessage access is available. Tap below to set up and start tracking.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        NextStepRow(number: 1, text: "Auto-connect iMessage")
+                        NextStepRow(number: 2, text: "Run first sync (timestamps only)")
+                        NextStepRow(number: 3, text: "See your response time insights")
+                    }
+                    .padding(.horizontal, horizontalPadding)
+                } else {
+                    Text("Grant Full Disk Access so Response Time can read message timestamps (never content).")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    
+                    #if os(macOS)
+                    Button("Open System Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button("Check Again") {
+                        checkPermissions()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
+                    #endif
+                }
             }
-            .padding(.horizontal, horizontalPadding)
-            .padding(.top, 16)
             
             Spacer()
         }
         .padding()
+        .onAppear { checkPermissions() }
+    }
+    
+    private func checkPermissions() {
+        let testPath = NSHomeDirectory() + "/Library/Messages/chat.db"
+        hasPermission = FileManager.default.isReadableFile(atPath: testPath)
+    }
+    
+    private func setupAndSync() {
+        isSettingUp = true
+        Task {
+            // Create iMessage account
+            let account = SourceAccount(platform: .imessage, displayName: "iMessage", isEnabled: true)
+            modelContext.insert(account)
+            try? modelContext.save()
+            
+            // Run first sync
+            do {
+                try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
+            } catch {
+                // Non-fatal — user can sync later
+            }
+            
+            await MainActor.run {
+                isSettingUp = false
+                setupComplete = true
+            }
+        }
     }
     
     private var horizontalPadding: CGFloat {
