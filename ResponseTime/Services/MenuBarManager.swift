@@ -74,11 +74,19 @@ final class MenuBarManager {
                 ))
             }
             
-            // TODO: Add Gmail stats when connected
-            // let gmailStats = try await gmailConnector.getQuickStats()
-            // platforms.append(...)
+            let overallMedian: TimeInterval?
+            if !platforms.isEmpty {
+                // Weighted average by response count
+                let totalResponses = platforms.reduce(0) { $0 + $1.responseCount }
+                if totalResponses > 0 {
+                    overallMedian = platforms.reduce(0.0) { $0 + $1.medianLatency * Double($1.responseCount) } / Double(totalResponses)
+                } else {
+                    overallMedian = platforms.map(\.medianLatency).reduce(0, +) / Double(platforms.count)
+                }
+            } else {
+                overallMedian = nil
+            }
             
-            let overallMedian = platforms.isEmpty ? nil : platforms.map(\.medianLatency).reduce(0, +) / Double(platforms.count)
             let totalPending = platforms.reduce(0) { $0 + $1.pendingCount }
             let totalResponses = platforms.reduce(0) { $0 + $1.responseCount }
             
@@ -91,11 +99,17 @@ final class MenuBarManager {
             lastUpdate = Date()
             
         } catch {
-            lastError = error.localizedDescription
-            
-            // If it's a database not found error, show a helpful message
-            if case iMessageError.databaseNotFound = error {
-                lastError = "Grant Full Disk Access to read iMessage data"
+            if let iMsgError = error as? iMessageError {
+                switch iMsgError {
+                case .databaseNotFound:
+                    lastError = "iMessage database not found"
+                case .permissionDenied:
+                    lastError = "Grant Full Disk Access in System Settings → Privacy & Security"
+                default:
+                    lastError = iMsgError.localizedDescription
+                }
+            } else {
+                lastError = error.localizedDescription
             }
         }
     }

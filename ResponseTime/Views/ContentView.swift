@@ -71,6 +71,18 @@ struct ContentView: View {
             }
         }
         .task {
+            // Apply user settings to analyzer
+            let analyzer = ResponseAnalyzer.shared
+            analyzer.matchingWindowDays = UserDefaults.standard.integer(forKey: "matchingWindowDays")
+            if analyzer.matchingWindowDays == 0 { analyzer.matchingWindowDays = 7 }
+            analyzer.confidenceThreshold = Float(UserDefaults.standard.double(forKey: "confidenceThreshold"))
+            if analyzer.confidenceThreshold == 0 { analyzer.confidenceThreshold = 0.7 }
+            analyzer.workingHoursStart = UserDefaults.standard.integer(forKey: "workingHoursStart")
+            if analyzer.workingHoursStart == 0 { analyzer.workingHoursStart = 9 }
+            analyzer.workingHoursEnd = UserDefaults.standard.integer(forKey: "workingHoursEnd")
+            if analyzer.workingHoursEnd == 0 { analyzer.workingHoursEnd = 17 }
+            analyzer.excludeWeekends = UserDefaults.standard.bool(forKey: "excludeWeekends")
+            
             // Auto-sync iMessage on launch
             await performSync()
         }
