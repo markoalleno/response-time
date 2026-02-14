@@ -440,6 +440,72 @@ final class ResponseAnalyzerTests: XCTestCase {
         XCTAssertEqual(conv.outboundCount, 1)
     }
     
+    // MARK: - Response Score
+    
+    func testResponseScoreEmpty() {
+        let score = ResponseScore.compute(from: [])
+        XCTAssertEqual(score.overall, 0)
+        XCTAssertEqual(score.grade, "--")
+    }
+    
+    func testResponseScoreFastResponses() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conv = Conversation(id: "score_conv", sourceAccount: account)
+        modelContext.insert(conv)
+        
+        var windows: [ResponseWindow] = []
+        for i in 0..<10 {
+            let inbound = MessageEvent(
+                id: "score_in_\(i)",
+                conversation: conv,
+                timestamp: Date().addingTimeInterval(-Double(i) * 3600),
+                direction: .inbound,
+                participantEmail: "test@test.com"
+            )
+            modelContext.insert(inbound)
+            windows.append(ResponseWindow(
+                inboundEvent: inbound,
+                latencySeconds: 300, // 5 min each
+                confidence: 1.0,
+                matchingMethod: .timeWindow
+            ))
+        }
+        
+        let score = ResponseScore.compute(from: windows)
+        XCTAssertGreaterThan(score.overall, 80)
+        XCTAssertTrue(["A+", "A"].contains(score.grade))
+        XCTAssertEqual(score.gradeColor, "green")
+    }
+    
+    func testResponseScoreSlowResponses() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conv = Conversation(id: "slow_conv", sourceAccount: account)
+        modelContext.insert(conv)
+        
+        var windows: [ResponseWindow] = []
+        for i in 0..<5 {
+            let inbound = MessageEvent(
+                id: "slow_in_\(i)",
+                conversation: conv,
+                timestamp: Date().addingTimeInterval(-Double(i) * 86400),
+                direction: .inbound,
+                participantEmail: "test@test.com"
+            )
+            modelContext.insert(inbound)
+            windows.append(ResponseWindow(
+                inboundEvent: inbound,
+                latencySeconds: 36000, // 10 hours each
+                confidence: 1.0,
+                matchingMethod: .timeWindow
+            ))
+        }
+        
+        let score = ResponseScore.compute(from: windows)
+        XCTAssertLessThan(score.overall, 60)
+    }
+    
     // MARK: - Participant
     
     func testParticipantInitials() {
