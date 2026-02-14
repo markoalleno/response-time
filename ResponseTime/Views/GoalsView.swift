@@ -10,6 +10,22 @@ struct GoalsView: View {
     
     @State private var showingAddGoal = false
     
+    private var backgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .windowBackgroundColor)
+        #else
+        return Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
@@ -51,15 +67,23 @@ struct GoalsView: View {
                     suggestedGoalsSection
                 }
             }
-            .padding(24)
+            .padding(viewPadding)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(backgroundColor)
         .sheet(isPresented: $showingAddGoal) {
             AddGoalSheet { goal in
                 modelContext.insert(goal)
                 try? modelContext.save()
             }
         }
+    }
+    
+    private var viewPadding: CGFloat {
+        #if os(macOS)
+        return 24
+        #else
+        return 16
+        #endif
     }
     
     private var overallProgressCard: some View {
@@ -107,7 +131,7 @@ struct GoalsView: View {
             .font(.caption)
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
     
@@ -142,7 +166,7 @@ struct GoalsView: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
     
@@ -151,26 +175,37 @@ struct GoalsView: View {
             Text("Suggested Goals")
                 .font(.headline)
             
+            #if os(macOS)
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 12) {
-                SuggestedGoalCard(
-                    platform: .gmail,
-                    target: "1 hour",
-                    description: "Industry average for email"
-                ) {
-                    addSuggestedGoal(.gmail, 3600)
-                }
-                
-                SuggestedGoalCard(
-                    platform: .slack,
-                    target: "15 minutes",
-                    description: "Quick response for DMs"
-                ) {
-                    addSuggestedGoal(.slack, 900)
-                }
+                suggestedGoalCards
             }
+            #else
+            LazyVStack(spacing: 12) {
+                suggestedGoalCards
+            }
+            #endif
+        }
+    }
+    
+    @ViewBuilder
+    private var suggestedGoalCards: some View {
+        SuggestedGoalCard(
+            platform: .gmail,
+            target: "1 hour",
+            description: "Industry average for email"
+        ) {
+            addSuggestedGoal(.gmail, 3600)
+        }
+        
+        SuggestedGoalCard(
+            platform: .slack,
+            target: "15 minutes",
+            description: "Quick response for DMs"
+        ) {
+            addSuggestedGoal(.slack, 900)
         }
     }
     
@@ -204,6 +239,14 @@ struct GoalCard: View {
         if progress >= 0.8 { return .green }
         if progress >= 0.6 { return .yellow }
         return .red
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
     }
     
     var body: some View {
@@ -275,11 +318,13 @@ struct GoalCard: View {
                 Image(systemName: "ellipsis.circle")
                     .foregroundColor(.secondary)
             }
+            #if os(macOS)
             .menuStyle(.borderlessButton)
+            #endif
             .frame(width: 30)
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
         .confirmationDialog(
             "Delete goal?",
@@ -301,6 +346,14 @@ struct SuggestedGoalCard: View {
     let target: String
     let description: String
     let onAdd: () -> Void
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
     
     var body: some View {
         Button(action: onAdd) {
@@ -324,7 +377,7 @@ struct SuggestedGoalCard: View {
                     .foregroundColor(.accentColor)
             }
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(cardBackgroundColor)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -363,85 +416,119 @@ struct AddGoalSheet: View {
     @State private var targetHours: Int = 1
     @State private var targetMinutes: Int = 0
     
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Create Goal")
-                .font(.title2.bold())
-            
-            // Platform picker
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Platform")
-                    .font(.headline)
+        NavigationStack {
+            VStack(spacing: 24) {
+                Text("Create Goal")
+                    .font(.title2.bold())
                 
-                Picker("Platform", selection: $selectedPlatform) {
-                    Text("All Platforms").tag(nil as Platform?)
-                    ForEach(Platform.allCases) { platform in
-                        Label(platform.displayName, systemImage: platform.icon)
-                            .tag(platform as Platform?)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-            
-            // Target time
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Target Response Time")
-                    .font(.headline)
-                
-                HStack {
-                    Picker("Hours", selection: $targetHours) {
-                        ForEach(0..<24) { hour in
-                            Text("\(hour)h").tag(hour)
-                        }
-                    }
-                    .frame(width: 80)
+                // Platform picker
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Platform")
+                        .font(.headline)
                     
-                    Picker("Minutes", selection: $targetMinutes) {
-                        ForEach([0, 15, 30, 45], id: \.self) { min in
-                            Text("\(min)m").tag(min)
+                    Picker("Platform", selection: $selectedPlatform) {
+                        Text("All Platforms").tag(nil as Platform?)
+                        ForEach(Platform.allCases) { platform in
+                            Label(platform.displayName, systemImage: platform.icon)
+                                .tag(platform as Platform?)
                         }
                     }
-                    .frame(width: 80)
+                    #if os(macOS)
+                    .pickerStyle(.menu)
+                    #endif
                 }
-            }
-            
-            // Preview
-            HStack {
-                Text("Goal:")
-                    .foregroundColor(.secondary)
-                Text("Respond within \(targetHours)h \(targetMinutes)m")
-                    .fontWeight(.medium)
-            }
-            .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(8)
-            
-            Spacer()
-            
-            // Actions
-            HStack {
-                Button("Cancel") {
-                    dismiss()
+                
+                // Target time
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Target Response Time")
+                        .font(.headline)
+                    
+                    HStack {
+                        Picker("Hours", selection: $targetHours) {
+                            ForEach(0..<24) { hour in
+                                Text("\(hour)h").tag(hour)
+                            }
+                        }
+                        .frame(width: 80)
+                        
+                        Picker("Minutes", selection: $targetMinutes) {
+                            ForEach([0, 15, 30, 45], id: \.self) { min in
+                                Text("\(min)m").tag(min)
+                            }
+                        }
+                        .frame(width: 80)
+                    }
                 }
-                .keyboardShortcut(.escape)
+                
+                // Preview
+                HStack {
+                    Text("Goal:")
+                        .foregroundColor(.secondary)
+                    Text("Respond within \(targetHours)h \(targetMinutes)m")
+                        .fontWeight(.medium)
+                }
+                .padding()
+                .background(cardBackgroundColor)
+                .cornerRadius(8)
                 
                 Spacer()
                 
-                Button("Create Goal") {
-                    let seconds = TimeInterval(targetHours * 3600 + targetMinutes * 60)
-                    let goal = ResponseGoal(
-                        platform: selectedPlatform,
-                        targetLatencySeconds: seconds
-                    )
-                    onSave(goal)
-                    dismiss()
+                // Actions
+                #if os(macOS)
+                HStack {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .keyboardShortcut(.escape)
+                    
+                    Spacer()
+                    
+                    createButton
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(targetHours == 0 && targetMinutes == 0)
+                #else
+                createButton
+                    .frame(maxWidth: .infinity)
+                #endif
             }
+            .padding(24)
+            #if os(macOS)
+            .frame(width: 400, height: 400)
+            #endif
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            #endif
         }
-        .padding(24)
-        .frame(width: 400, height: 400)
+    }
+    
+    private var createButton: some View {
+        Button("Create Goal") {
+            let seconds = TimeInterval(targetHours * 3600 + targetMinutes * 60)
+            let goal = ResponseGoal(
+                platform: selectedPlatform,
+                targetLatencySeconds: seconds
+            )
+            onSave(goal)
+            dismiss()
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(targetHours == 0 && targetMinutes == 0)
+        #if os(iOS)
+        .controlSize(.large)
+        #endif
     }
 }
 

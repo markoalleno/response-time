@@ -11,23 +11,36 @@ struct ContentView: View {
     
     enum Tab: String, CaseIterable, Identifiable {
         case dashboard = "Dashboard"
-        case platforms = "Platforms"
         case analytics = "Analytics"
         case goals = "Goals"
+        case contacts = "Contacts"
+        case settings = "Settings"
         
         var id: String { rawValue }
         
         var icon: String {
             switch self {
             case .dashboard: return "gauge.with.dots.needle.bottom.50percent"
-            case .platforms: return "square.stack.3d.up"
             case .analytics: return "chart.xyaxis.line"
             case .goals: return "target"
+            case .contacts: return "person.2"
+            case .settings: return "gear"
             }
         }
     }
     
     var body: some View {
+        #if os(macOS)
+        macOSLayout
+        #else
+        iOSLayout
+        #endif
+    }
+    
+    // MARK: - macOS Layout
+    
+    #if os(macOS)
+    private var macOSLayout: some View {
         NavigationSplitView {
             sidebarContent
         } detail: {
@@ -50,9 +63,16 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            if accounts.isEmpty {
+            // Only show onboarding once
+            let hasCompleted = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+            if !hasCompleted {
                 appState.isOnboarding = true
+                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
             }
+        }
+        .task {
+            // Auto-sync iMessage on launch
+            await performSync()
         }
         .sheet(isPresented: Binding(
             get: { appState.isOnboarding },
@@ -66,7 +86,7 @@ struct ContentView: View {
     private var sidebarContent: some View {
         List(selection: $selectedTab) {
             Section {
-                ForEach(Tab.allCases) { tab in
+                ForEach(Tab.allCases.filter { $0 != .settings }) { tab in
                     NavigationLink(value: tab) {
                         Label(tab.rawValue, systemImage: tab.icon)
                     }
@@ -96,20 +116,91 @@ struct ContentView: View {
         .listStyle(.sidebar)
         .frame(minWidth: 180)
     }
+    #endif
+    
+    // MARK: - iOS Layout
+    
+    #if os(iOS)
+    private var iOSLayout: some View {
+        TabView(selection: $selectedTab) {
+            NavigationStack {
+                DashboardView()
+                    .navigationTitle("Dashboard")
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            syncButton
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent")
+            }
+            .tag(Tab.dashboard)
+            
+            NavigationStack {
+                AnalyticsView()
+                    .navigationTitle("Analytics")
+            }
+            .tabItem {
+                Label("Analytics", systemImage: "chart.xyaxis.line")
+            }
+            .tag(Tab.analytics)
+            
+            NavigationStack {
+                GoalsView()
+                    .navigationTitle("Goals")
+            }
+            .tabItem {
+                Label("Goals", systemImage: "target")
+            }
+            .tag(Tab.goals)
+            
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("Settings")
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gear")
+            }
+            .tag(Tab.settings)
+        }
+        .onAppear {
+            // Only show onboarding once
+            let hasCompleted = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+            if !hasCompleted {
+                appState.isOnboarding = true
+                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.isOnboarding },
+            set: { appState.isOnboarding = $0 }
+        )) {
+            OnboardingView()
+                .environment(appState)
+        }
+    }
+    #endif
+    
+    // MARK: - Detail Content
     
     @ViewBuilder
     private var detailContent: some View {
         switch selectedTab {
         case .dashboard:
             DashboardView()
-        case .platforms:
-            PlatformsView()
         case .analytics:
             AnalyticsView()
         case .goals:
             GoalsView()
+        case .contacts:
+            ContactsView()
+        case .settings:
+            SettingsView()
         }
     }
+    
+    // MARK: - Sync Button
     
     private var syncButton: some View {
         Button {
@@ -125,16 +216,22 @@ struct ContentView: View {
             }
         }
         .disabled(appState.isSyncing)
+        #if os(macOS)
         .help(appState.lastSyncDate.map { "Last sync: \(formatRelativeTime($0))" } ?? "Sync now")
+        #endif
     }
     
     private func performSync() async {
         appState.isSyncing = true
         defer { appState.isSyncing = false }
         
-        // Simulated sync for now
-        try? await Task.sleep(for: .seconds(2))
-        appState.lastSyncDate = Date()
+        do {
+            // Sync iMessage data to SwiftData (creates MessageEvents + ResponseWindows)
+            try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
+            appState.lastSyncDate = Date()
+        } catch {
+            appState.error = .syncFailed(error.localizedDescription)
+        }
     }
     
     private func formatRelativeTime(_ date: Date) -> String {
@@ -167,35 +264,62 @@ struct DashboardView: View {
                 timeRangePicker
                 
                 // Main dashboard grid
+                #if os(macOS)
                 LazyVGrid(columns: [
                     GridItem(.flexible(), spacing: 16),
                     GridItem(.flexible(), spacing: 16)
                 ], spacing: 16) {
-                    // Response time card
                     responseTimeCard
-                    
-                    // Trend card
                     trendCard
-                    
-                    // Platform breakdown
                     platformBreakdownCard
-                    
-                    // Goals progress
                     goalsCard
                 }
+                #else
+                LazyVStack(spacing: 16) {
+                    responseTimeCard
+                    trendCard
+                    platformBreakdownCard
+                    goalsCard
+                }
+                #endif
                 
                 // Recent activity
                 recentActivitySection
             }
-            .padding(24)
+            .padding(horizontalPadding)
+            .padding(.vertical, 24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(backgroundColor)
         .task {
             await loadMetrics()
         }
         .onChange(of: appState.selectedTimeRange) { _, _ in
             Task { await loadMetrics() }
         }
+    }
+    
+    private var horizontalPadding: CGFloat {
+        #if os(macOS)
+        return 24
+        #else
+        return 16
+        #endif
+    }
+    
+    private var backgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .windowBackgroundColor)
+        #else
+        return Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
     }
     
     private var metricsHeader: some View {
@@ -245,7 +369,9 @@ struct DashboardView: View {
             }
         }
         .pickerStyle(.segmented)
+        #if os(macOS)
         .frame(maxWidth: 400)
+        #endif
     }
     
     private var responseTimeCard: some View {
@@ -331,48 +457,22 @@ struct DashboardView: View {
                 Text("Recent Responses")
                     .font(.headline)
                 Spacer()
-                if recentResponses.isEmpty {
-                    Text("Demo Data")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(4)
-                }
             }
             
             if recentResponses.isEmpty {
-                // Show demo responses
-                ForEach(DemoDataGenerator.generateDemoRecentResponses()) { response in
-                    HStack {
-                        Image(systemName: response.platform.icon)
-                            .foregroundColor(response.platform.color)
-                        
-                        VStack(alignment: .leading) {
-                            Text(response.sender)
-                                .lineLimit(1)
-                            Text(response.timestamp, style: .relative)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Text(response.formattedLatency)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(response.latencySeconds < 3600 ? .green : .orange)
-                    }
-                    .padding(.vertical, 8)
-                    
-                    Divider()
+                VStack(spacing: 8) {
+                    Image(systemName: "message.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("No responses yet")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                    Text("Sync iMessage to see your response data")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                
-                Text("Connect a platform to see your real data")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 8)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
             } else {
                 ForEach(recentResponses.prefix(5)) { response in
                     HStack {
@@ -405,7 +505,7 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
     
@@ -443,10 +543,10 @@ struct DashboardView: View {
                 )
             }
         } else {
-            // Show demo data to showcase the UI
+            // No data — show empty state
             await MainActor.run {
-                metrics = DemoDataGenerator.generateDemoMetrics(timeRange: appState.selectedTimeRange)
-                dailyData = DemoDataGenerator.generateDemoDailyMetrics(timeRange: appState.selectedTimeRange)
+                metrics = nil
+                dailyData = []
             }
         }
     }
@@ -458,6 +558,14 @@ struct DashboardCard<Content: View>: View {
     let title: String
     let icon: String
     @ViewBuilder let content: Content
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -472,7 +580,7 @@ struct DashboardCard<Content: View>: View {
             content
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
 }
@@ -500,7 +608,7 @@ struct TrendChart: View {
     let data: [DailyMetrics]
     
     var body: some View {
-        // Placeholder chart - would use Swift Charts in production
+        // Simple line chart visualization
         GeometryReader { geo in
             Path { path in
                 guard !data.isEmpty else { return }

@@ -1,6 +1,6 @@
 import WidgetKit
 import SwiftUI
-import SwiftData
+import AppIntents
 
 // MARK: - Widget Entry
 
@@ -9,14 +9,15 @@ struct ResponseTimeEntry: TimelineEntry {
     let medianResponseTime: TimeInterval
     let goalProgress: Double
     let platformBreakdown: [(Platform, TimeInterval)]
-    let configuration: ConfigurationAppIntent
+    let timeRange: WidgetTimeRange
+    let showPlatforms: Bool
 }
 
 // MARK: - Configuration Intent
 
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
-    static var title: LocalizedStringResource = "Response Time"
-    static var description: IntentDescription = "View your response time metrics"
+    static let title: LocalizedStringResource = "Response Time"
+    static let description: IntentDescription = IntentDescription("View your response time metrics")
     
     @Parameter(title: "Time Range", default: .week)
     var timeRange: WidgetTimeRange
@@ -31,14 +32,14 @@ enum WidgetTimeRange: String, AppEnum {
     case month = "month"
     
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
-        "Time Range"
+        TypeDisplayRepresentation(name: "Time Range")
     }
     
     static var caseDisplayRepresentations: [WidgetTimeRange: DisplayRepresentation] {
         [
-            .today: "Today",
-            .week: "This Week",
-            .month: "This Month"
+            .today: DisplayRepresentation(title: "Today"),
+            .week: DisplayRepresentation(title: "This Week"),
+            .month: DisplayRepresentation(title: "This Month")
         ]
     }
 }
@@ -46,6 +47,9 @@ enum WidgetTimeRange: String, AppEnum {
 // MARK: - Timeline Provider
 
 struct Provider: AppIntentTimelineProvider {
+    typealias Entry = ResponseTimeEntry
+    typealias Intent = ConfigurationAppIntent
+    
     func placeholder(in context: Context) -> ResponseTimeEntry {
         ResponseTimeEntry(
             date: Date(),
@@ -55,7 +59,8 @@ struct Provider: AppIntentTimelineProvider {
                 (.gmail, 3600),
                 (.slack, 900)
             ],
-            configuration: ConfigurationAppIntent()
+            timeRange: .week,
+            showPlatforms: true
         )
     }
     
@@ -85,7 +90,8 @@ struct Provider: AppIntentTimelineProvider {
                 (.gmail, Double.random(in: 2400...4800)),
                 (.slack, Double.random(in: 600...1800))
             ],
-            configuration: configuration
+            timeRange: configuration.timeRange,
+            showPlatforms: configuration.showPlatforms
         )
     }
 }
@@ -178,7 +184,7 @@ struct ResponseTimeWidgetEntryView: View {
             Divider()
             
             // Platform breakdown
-            if entry.configuration.showPlatforms {
+            if entry.showPlatforms {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(entry.platformBreakdown, id: \.0) { platform, latency in
                         HStack {
@@ -210,7 +216,7 @@ struct ResponseTimeWidgetEntryView: View {
                 Text("Response Time")
                     .font(.headline)
                 Spacer()
-                Text(entry.configuration.timeRange.rawValue.capitalized)
+                Text(entry.timeRange.rawValue.capitalized)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -245,7 +251,7 @@ struct ResponseTimeWidgetEntryView: View {
             Divider()
             
             // Platform breakdown
-            if entry.configuration.showPlatforms {
+            if entry.showPlatforms {
                 Text("By Platform")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -376,7 +382,8 @@ enum Platform: String, CaseIterable, Identifiable {
         medianResponseTime: 2700,
         goalProgress: 0.78,
         platformBreakdown: [(.gmail, 3600), (.slack, 900)],
-        configuration: ConfigurationAppIntent()
+        timeRange: .week,
+        showPlatforms: true
     )
 }
 
@@ -388,7 +395,8 @@ enum Platform: String, CaseIterable, Identifiable {
         medianResponseTime: 2700,
         goalProgress: 0.78,
         platformBreakdown: [(.gmail, 3600), (.slack, 900)],
-        configuration: ConfigurationAppIntent()
+        timeRange: .week,
+        showPlatforms: true
     )
 }
 
@@ -400,6 +408,7 @@ enum Platform: String, CaseIterable, Identifiable {
         medianResponseTime: 2700,
         goalProgress: 0.78,
         platformBreakdown: [(.gmail, 3600), (.slack, 900)],
-        configuration: ConfigurationAppIntent()
+        timeRange: .week,
+        showPlatforms: true
     )
 }

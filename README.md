@@ -1,138 +1,163 @@
 # Response Time
 
-> Privacy-first macOS app for analyzing personal response times across communication platforms.
+A privacy-first app that analyzes your personal response times across messaging platforms.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Swift-6.0-orange?logo=swift" alt="Swift 6" />
-  <img src="https://img.shields.io/badge/macOS-15%2B-blue?logo=apple" alt="macOS 15+" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
-</p>
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20iOS%20%7C%20iPadOS-blue)
+![Swift](https://img.shields.io/badge/swift-6.0-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## Overview
+## Features
 
-Response Time helps you understand and improve your communication responsiveness by analyzing when you receive messages and when you respond. All data is processed **locally on your device** — no cloud analytics, no data collection, just actionable insights.
+### 📊 Dashboard
+- Real-time response time metrics
+- Trend visualization with charts
+- Platform breakdown
+- Goal progress tracking
 
-### Key Features
+### 🔗 Supported Platforms
+- **Gmail** - OAuth 2.0 integration with Google APIs
+- **Microsoft 365** - Graph API with delta sync support
+- **Slack** - DM and mention tracking
+- **iMessage** - Local database analysis (requires permissions)
 
-- **📊 Dashboard** — At-a-glance metrics with median response time, trends, and goal progress
-- **📈 Analytics** — Interactive charts showing trends, heatmaps, distributions, and platform breakdowns
-- **🎯 Goals** — Set response time targets by platform and track your progress
-- **🔒 Privacy-First** — 100% local processing, metadata only, no message content
-- **📱 Multi-Platform** — Gmail, Outlook, Slack, and iMessage support
-- **📌 Menu Bar** — Quick-glance metrics without opening the full app
-- **📲 Widgets** — Desktop widgets in small, medium, and large sizes
+### 🔒 Privacy First
+- **100% local processing** - All data stays on your device
+- **Metadata only** - We never read message content
+- **No cloud required** - Your data is yours
+- **One-click deletion** - Remove all data anytime
 
-## Privacy
+### 📈 Analytics
+- Response time trends over time
+- Working hours vs. off-hours analysis
+- Contact-level metrics
+- Distribution charts
+- Weekly patterns
 
-Response Time is designed with privacy as the foundation, not an afterthought:
+### 🎯 Goals
+- Set response time targets by platform
+- Track progress with visual indicators
+- Get insights when falling behind
 
-| Feature | Details |
-|---------|---------|
-| **Local Processing** | All analytics computed on-device |
-| **No Cloud** | Zero data sent to external servers |
-| **Metadata Only** | Never reads message content — just timestamps and participants |
-| **Your Data** | One-click data deletion, CSV export |
-| **Open Source** | Audit the code yourself |
+### 🖥️ Platform Features
 
-## Screenshots
+#### macOS
+- Menu bar extra for quick metrics
+- Desktop widgets (small, medium, large)
+- Settings preferences window
+- Keyboard shortcuts
 
-*Coming soon — build from source to see the app in action.*
+#### iOS & iPadOS
+- Native tab-based navigation
+- Home screen widgets
+- Siri Shortcuts integration
+- Share sheet export
 
-## Getting Started
+## Requirements
 
-### Requirements
+- **macOS** 15.0 (Sequoia) or later
+- **iOS/iPadOS** 18.0 or later
+- Xcode 16.0+ for development
 
-- macOS 15 (Sequoia) or later
-- Xcode 16+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (for project generation)
+## Building
 
-### Build
+### Prerequisites
+- Xcode 16.0+
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+
+### Build Steps
 
 ```bash
-# Clone the repo
+# Clone the repository
 git clone https://github.com/markoalleno/response-time.git
 cd response-time
 
 # Generate Xcode project
 xcodegen generate
 
-# Build
-xcodebuild -target ResponseTime -destination 'platform=macOS' build
+# Build for macOS
+xcodebuild -scheme ResponseTime-macOS -destination 'platform=macOS' build
 
-# Or open in Xcode
-open ResponseTime.xcodeproj
+# Build for iOS Simulator
+xcodebuild -scheme ResponseTime-iOS -destination 'generic/platform=iOS Simulator' build
 ```
 
-### Configure OAuth (Required for Platform Connections)
+## OAuth Configuration
 
-To connect Gmail, Outlook, or Slack, you'll need to set up OAuth credentials:
+To connect to messaging platforms, you'll need to configure OAuth credentials:
 
-#### Gmail
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project and enable Gmail API
-3. Create OAuth 2.0 credentials (macOS app type)
-4. Add your client ID to `OAuthService.swift`
+### Gmail
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com)
+2. Enable Gmail API
+3. Create OAuth 2.0 credentials
+4. Update `CLIENT_ID` in `OAuthService.swift`
 
-#### Microsoft Outlook
-1. Go to [Azure Portal](https://portal.azure.com/)
-2. Register an application
-3. Add `Mail.Read` permission
-4. Add your client ID to `OAuthService.swift`
+### Microsoft 365
+1. Register an app in [Azure Portal](https://portal.azure.com)
+2. Configure redirect URI
+3. Add Mail.Read permission
+4. Update `CLIENT_ID` in `OAuthService.swift`
 
-#### Slack
-1. Go to [Slack API](https://api.slack.com/apps)
-2. Create a new app
-3. Add `im:history` and `mpim:history` scopes
-4. Add your client ID to `OAuthService.swift`
+### Slack
+1. Create an app at [api.slack.com](https://api.slack.com/apps)
+2. Configure OAuth scopes
+3. Update `CLIENT_ID` in `OAuthService.swift`
 
 ## Architecture
 
+### Tech Stack
+- **Swift 6** with strict concurrency
+- **SwiftUI** for all UI
+- **SwiftData** for persistence
+- **Swift Charts** for visualizations
+- **App Intents** for Siri/Shortcuts
+- **WidgetKit** for home screen widgets
+
+### Project Structure
 ```
 ResponseTime/
-├── ResponseTimeApp.swift      # App entry point, scenes
-├── Models/
-│   └── Models.swift           # SwiftData models
-├── Views/
-│   ├── ContentView.swift      # Main navigation
-│   ├── DashboardView.swift    # Dashboard (inside ContentView)
-│   ├── PlatformsView.swift    # Account management
-│   ├── AnalyticsView.swift    # Charts and insights
-│   ├── GoalsView.swift        # Goal tracking
-│   ├── SettingsView.swift     # Preferences
-│   ├── MenuBarView.swift      # Menu bar extra
-│   └── OnboardingView.swift   # First-run experience
-└── Services/
-    ├── OAuthService.swift     # OAuth 2.0 + PKCE
-    └── ResponseAnalyzer.swift # Analytics engine
+├── Models/           # SwiftData models
+├── Views/            # SwiftUI views
+├── Services/         # Business logic
+│   ├── Connectors/   # Platform API connectors
+│   └── ...
+├── Assets.xcassets/  # Images and colors
+└── PrivacyInfo.xcprivacy
+
+ResponseTimeWidget/   # Widget extension
 ```
 
-### Data Models
+### Key Components
+- **SyncCoordinator** - Orchestrates sync across platforms
+- **ResponseAnalyzer** - Computes metrics and response windows
+- **GmailConnector/MicrosoftConnector/SlackConnector** - Platform-specific API clients
+- **ExportService** - CSV and JSON export
 
-- **SourceAccount** — Connected platform (Gmail, Outlook, Slack, iMessage)
-- **Conversation** — Thread/conversation container
-- **MessageEvent** — Individual message with timestamp and direction
-- **ResponseWindow** — Computed inbound→outbound response pair
-- **ResponseGoal** — User-defined response time targets
+## Privacy
 
-## Roadmap
+Response Time is designed with privacy as a core principle:
 
-- [ ] Gmail API integration
-- [ ] Microsoft Graph API integration
-- [ ] Slack API integration
-- [ ] iMessage database reader
-- [ ] Background sync (SMAppService)
-- [ ] Optional iCloud sync
-- [ ] App Intents / Shortcuts
-- [ ] Calendar context awareness
+- All data processing happens locally on your device
+- Only message metadata (timestamps, participants) is accessed
+- Message content is never read or stored
+- No analytics or telemetry is collected
+- Optional iCloud sync uses your private CloudKit container
+
+See [Privacy Policy](https://example.com/privacy) for details.
 
 ## Contributing
 
-Contributions welcome! Please open an issue first to discuss major changes.
+Contributions are welcome! Please read our contributing guidelines before submitting a PR.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- Apple's Swift and SwiftUI teams
+- The XcodeGen project
+- All contributors and testers
 
 ---
 
-Built with ❤️ by [@markoalleno](https://github.com/markoalleno)
+Made with ❤️ by Mark Allen

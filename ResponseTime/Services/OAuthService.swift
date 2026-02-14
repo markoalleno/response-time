@@ -1,6 +1,9 @@
 import SwiftUI
 import AuthenticationServices
 import Security
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
 
 // MARK: - OAuth Service
 
@@ -269,20 +272,22 @@ class OAuthService {
     
     private func generateCodeChallenge(from verifier: String) -> String {
         guard let data = verifier.data(using: .utf8) else { return "" }
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        data.withUnsafeBytes { buffer in
-            _ = CC_SHA256(buffer.baseAddress, CC_LONG(buffer.count), &hash)
-        }
+        #if canImport(CryptoKit)
+        let hash = SHA256.hash(data: data)
         return Data(hash).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+        #else
+        // Fallback without CryptoKit
+        return ""
+        #endif
     }
 }
 
 // MARK: - OAuth Tokens
 
-struct OAuthTokens: Codable {
+struct OAuthTokens: Codable, Sendable {
     let accessToken: String
     let refreshToken: String?
     let expiresAt: Date
@@ -299,7 +304,16 @@ class PresentationContextProvider: NSObject, ASWebAuthenticationPresentationCont
     static let shared = PresentationContextProvider()
     
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        NSApp.mainWindow ?? ASPresentationAnchor()
+        #if os(macOS)
+        return NSApp.mainWindow ?? ASPresentationAnchor()
+        #else
+        // For iOS, get the key window
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first else {
+            return ASPresentationAnchor()
+        }
+        return window
+        #endif
     }
 }
 
@@ -350,6 +364,3 @@ final class KeychainManager: Sendable {
         SecItemDelete(query as CFDictionary)
     }
 }
-
-// Import CommonCrypto for SHA256
-import CommonCrypto

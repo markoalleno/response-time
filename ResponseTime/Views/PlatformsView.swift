@@ -10,6 +10,22 @@ struct PlatformsView: View {
     @State private var showingAddPlatform = false
     @State private var selectedPlatformToAdd: Platform?
     
+    private var backgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .windowBackgroundColor)
+        #else
+        return Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
@@ -36,24 +52,23 @@ struct PlatformsView: View {
                     Text("Add Platform")
                         .font(.headline)
                     
+                    #if os(macOS)
                     LazyVGrid(columns: [
                         GridItem(.flexible(), spacing: 12),
                         GridItem(.flexible(), spacing: 12)
                     ], spacing: 12) {
-                        ForEach(Platform.allCases.filter { platform in
-                            !accounts.contains { $0.platform == platform }
-                        }) { platform in
-                            PlatformAddCard(platform: platform) {
-                                selectedPlatformToAdd = platform
-                                showingAddPlatform = true
-                            }
-                        }
+                        platformCards
                     }
+                    #else
+                    LazyVStack(spacing: 12) {
+                        platformCards
+                    }
+                    #endif
                 }
             }
-            .padding(24)
+            .padding(platformPadding)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(backgroundColor)
         .sheet(isPresented: $showingAddPlatform) {
             if let platform = selectedPlatformToAdd {
                 AddPlatformSheet(platform: platform) { account in
@@ -61,6 +76,26 @@ struct PlatformsView: View {
                     try? modelContext.save()
                     showingAddPlatform = false
                 }
+            }
+        }
+    }
+    
+    private var platformPadding: CGFloat {
+        #if os(macOS)
+        return 24
+        #else
+        return 16
+        #endif
+    }
+    
+    @ViewBuilder
+    private var platformCards: some View {
+        ForEach(Platform.allCases.filter { platform in
+            !accounts.contains { $0.platform == platform }
+        }) { platform in
+            PlatformAddCard(platform: platform) {
+                selectedPlatformToAdd = platform
+                showingAddPlatform = true
             }
         }
     }
@@ -78,6 +113,14 @@ struct ConnectedAccountCard: View {
     let onDelete: () -> Void
     
     @State private var showingDeleteConfirm = false
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
     
     var body: some View {
         HStack(spacing: 16) {
@@ -136,7 +179,7 @@ struct ConnectedAccountCard: View {
             }
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
         .confirmationDialog(
             "Disconnect \(account.platform.displayName)?",
@@ -158,6 +201,14 @@ struct ConnectedAccountCard: View {
 struct PlatformAddCard: View {
     let platform: Platform
     let onAdd: () -> Void
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
     
     var body: some View {
         Button(action: onAdd) {
@@ -186,7 +237,7 @@ struct PlatformAddCard: View {
                     .foregroundColor(.accentColor)
             }
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(cardBackgroundColor)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -216,85 +267,133 @@ struct AddPlatformSheet: View {
     @State private var isAuthenticating = false
     @State private var error: String?
     
+    private var sheetWidth: CGFloat {
+        #if os(macOS)
+        return 450
+        #else
+        return .infinity
+        #endif
+    }
+    
+    private var sheetHeight: CGFloat {
+        #if os(macOS)
+        return 500
+        #else
+        return .infinity
+        #endif
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
-        VStack(spacing: 24) {
-            // Header
-            VStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(platform.color.opacity(0.15))
-                        .frame(width: 64, height: 64)
-                    Image(systemName: platform.icon)
-                        .font(.largeTitle)
-                        .foregroundColor(platform.color)
+        NavigationStack {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(platform.color.opacity(0.15))
+                            .frame(width: 64, height: 64)
+                        Image(systemName: platform.icon)
+                            .font(.largeTitle)
+                            .foregroundColor(platform.color)
+                    }
+                    
+                    Text("Connect \(platform.displayName)")
+                        .font(.title2.bold())
+                    
+                    Text(permissionDescription)
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                 }
                 
-                Text("Connect \(platform.displayName)")
-                    .font(.title2.bold())
-                
-                Text(permissionDescription)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            
-            // Permissions list
-            VStack(alignment: .leading, spacing: 12) {
-                Text("We will request:")
-                    .font(.headline)
-                
-                ForEach(permissions, id: \.self) { permission in
+                // Permissions list
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("We will request:")
+                        .font(.headline)
+                    
+                    ForEach(permissions, id: \.self) { permission in
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text(permission)
+                        }
+                    }
+                    
                     HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text(permission)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text("We never read message content")
                     }
                 }
+                .padding()
+                .background(cardBackgroundColor)
+                .cornerRadius(12)
                 
-                HStack {
-                    Image(systemName: "xmark.circle.fill")
+                if let error = error {
+                    Text(error)
                         .foregroundColor(.red)
-                    Text("We never read message content")
+                        .font(.caption)
                 }
-            }
-            .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(12)
-            
-            if let error = error {
-                Text(error)
-                    .foregroundColor(.red)
-                    .font(.caption)
-            }
-            
-            Spacer()
-            
-            // Actions
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.escape)
                 
                 Spacer()
                 
-                Button {
-                    startAuth()
-                } label: {
-                    if isAuthenticating {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text("Connect \(platform.displayName)")
+                // Actions
+                #if os(macOS)
+                HStack {
+                    Button("Cancel") {
+                        dismiss()
                     }
+                    .keyboardShortcut(.escape)
+                    
+                    Spacer()
+                    
+                    connectButton
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isAuthenticating)
+                #else
+                connectButton
+                    .frame(maxWidth: .infinity)
+                #endif
+            }
+            .padding(24)
+            #if os(macOS)
+            .frame(width: sheetWidth, height: sheetHeight)
+            #endif
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            #endif
+        }
+    }
+    
+    private var connectButton: some View {
+        Button {
+            startAuth()
+        } label: {
+            if isAuthenticating {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Text("Connect \(platform.displayName)")
             }
         }
-        .padding(24)
-        .frame(width: 450, height: 500)
+        .buttonStyle(.borderedProminent)
+        .disabled(isAuthenticating)
+        #if os(iOS)
+        .controlSize(.large)
+        #endif
     }
     
     private var permissionDescription: String {
@@ -326,19 +425,28 @@ struct AddPlatformSheet: View {
     private func startAuth() {
         isAuthenticating = true
         
-        // Simulate OAuth flow
         Task {
-            try? await Task.sleep(for: .seconds(2))
-            
-            // Create account (in real app, this would be after OAuth)
-            let account = SourceAccount(
-                platform: platform,
-                displayName: "Demo Account",
-                email: "demo@example.com"
-            )
-            
-            await MainActor.run {
-                onComplete(account)
+            if platform == .imessage {
+                // iMessage uses local chat.db — no OAuth needed
+                let account = SourceAccount(
+                    platform: .imessage,
+                    displayName: "iMessage",
+                    isEnabled: true
+                )
+                await MainActor.run {
+                    onComplete(account)
+                }
+            } else {
+                // Other platforms use OAuth (placeholder)
+                try? await Task.sleep(for: .seconds(2))
+                let account = SourceAccount(
+                    platform: platform,
+                    displayName: platform.displayName,
+                    email: ""
+                )
+                await MainActor.run {
+                    onComplete(account)
+                }
             }
         }
     }

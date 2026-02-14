@@ -30,10 +30,27 @@ struct AnalyticsView: View {
         }
     }
     
+    private var backgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .windowBackgroundColor)
+        #else
+        return Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
                 // Header with chart selector
+                #if os(macOS)
                 HStack {
                     Text("Analytics")
                         .font(.title2.bold())
@@ -49,15 +66,25 @@ struct AnalyticsView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 400)
                 }
+                #else
+                VStack(spacing: 12) {
+                    Picker("Chart", selection: $selectedChart) {
+                        ForEach(ChartType.allCases) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                #endif
                 
                 // Time range
                 timeRangePicker
                 
                 // Main chart
                 chartContent
-                    .frame(height: 400)
+                    .frame(height: chartHeight)
                     .padding()
-                    .background(Color(nsColor: .controlBackgroundColor))
+                    .background(cardBackgroundColor)
                     .cornerRadius(12)
                 
                 // Stats grid
@@ -66,9 +93,25 @@ struct AnalyticsView: View {
                 // Insights
                 insightsSection
             }
-            .padding(24)
+            .padding(viewPadding)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(backgroundColor)
+    }
+    
+    private var viewPadding: CGFloat {
+        #if os(macOS)
+        return 24
+        #else
+        return 16
+        #endif
+    }
+    
+    private var chartHeight: CGFloat {
+        #if os(macOS)
+        return 400
+        #else
+        return 300
+        #endif
     }
     
     private var timeRangePicker: some View {
@@ -81,7 +124,9 @@ struct AnalyticsView: View {
             }
         }
         .pickerStyle(.segmented)
+        #if os(macOS)
         .frame(maxWidth: 400)
+        #endif
     }
     
     @ViewBuilder
@@ -103,14 +148,15 @@ struct AnalyticsView: View {
             Text("Response Time Trend")
                 .font(.headline)
             
-            if responseWindows.isEmpty {
+            let dailyData = realDailyData
+            if dailyData.isEmpty {
                 emptyChartState
             } else {
                 Chart {
-                    ForEach(sampleDailyData) { point in
+                    ForEach(dailyData) { point in
                         LineMark(
                             x: .value("Date", point.date),
-                            y: .value("Response Time", point.medianLatency / 60) // Convert to minutes
+                            y: .value("Response Time", point.medianLatency / 60)
                         )
                         .foregroundStyle(Color.accentColor)
                         .interpolationMethod(.catmullRom)
@@ -154,29 +200,31 @@ struct AnalyticsView: View {
                 // 7x24 grid for day of week x hour
                 let days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
                 
-                VStack(spacing: 2) {
-                    // Hour labels
-                    HStack(spacing: 2) {
-                        Text("")
-                            .frame(width: 40)
-                        ForEach(0..<24) { hour in
-                            Text("\(hour)")
-                                .font(.system(size: 8))
-                                .frame(width: 14)
-                        }
-                    }
-                    
-                    ForEach(0..<7) { day in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(spacing: 2) {
+                        // Hour labels
                         HStack(spacing: 2) {
-                            Text(days[day])
-                                .font(.caption2)
-                                .frame(width: 40, alignment: .leading)
-                            
+                            Text("")
+                                .frame(width: 40)
                             ForEach(0..<24) { hour in
-                                Rectangle()
-                                    .fill(heatmapColor(day: day, hour: hour))
-                                    .frame(width: 14, height: 14)
-                                    .cornerRadius(2)
+                                Text("\(hour)")
+                                    .font(.system(size: 8))
+                                    .frame(width: 14)
+                            }
+                        }
+                        
+                        ForEach(0..<7, id: \.self) { day in
+                            HStack(spacing: 2) {
+                                Text(days[day])
+                                    .font(.caption2)
+                                    .frame(width: 40, alignment: .leading)
+                                
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Rectangle()
+                                        .fill(heatmapColor(day: day, hour: hour))
+                                        .frame(width: 14, height: 14)
+                                        .cornerRadius(2)
+                                }
                             }
                         }
                     }
@@ -186,16 +234,29 @@ struct AnalyticsView: View {
     }
     
     private func heatmapColor(day: Int, hour: Int) -> Color {
-        // Simulated data - working hours (9-17) on weekdays are faster
-        let isWorkingHour = hour >= 9 && hour <= 17
-        let isWeekday = day >= 1 && day <= 5
+        // Use real data from response windows
+        let matching = responseWindows.filter { window in
+            window.dayOfWeek == (day + 1) && window.hourOfDay == hour && window.isValidForAnalytics
+        }
         
-        if isWeekday && isWorkingHour {
-            return Color.green.opacity(Double.random(in: 0.6...0.9))
-        } else if isWeekday {
-            return Color.yellow.opacity(Double.random(in: 0.4...0.6))
+        guard !matching.isEmpty else {
+            return Color.secondary.opacity(0.1)
+        }
+        
+        let latencies = matching.map(\.latencySeconds)
+        let median = latencies.sorted()[latencies.count / 2]
+        
+        // Color based on median: green = fast, red = slow
+        if median < 1800 {       // < 30 min
+            return Color.green.opacity(0.7)
+        } else if median < 3600 { // < 1 hour
+            return Color.green.opacity(0.4)
+        } else if median < 7200 { // < 2 hours
+            return Color.yellow.opacity(0.5)
+        } else if median < 14400 { // < 4 hours
+            return Color.orange.opacity(0.5)
         } else {
-            return Color.orange.opacity(Double.random(in: 0.3...0.5))
+            return Color.red.opacity(0.5)
         }
     }
     
@@ -213,10 +274,7 @@ struct AnalyticsView: View {
                             x: .value("Time", item.bucket),
                             y: .value("Count", item.count)
                         )
-                        .foregroundStyle(item.bucket == "<1h" ? Color.green : 
-                                        item.bucket == "1-2h" ? Color.blue :
-                                        item.bucket == "2-4h" ? Color.yellow :
-                                        item.bucket == "4-8h" ? Color.orange : Color.red)
+                        .foregroundStyle(item.color)
                     }
                 }
                 .chartXAxisLabel("Response Time")
@@ -225,15 +283,8 @@ struct AnalyticsView: View {
         }
     }
     
-    private var distributionData: [(bucket: String, count: Int)] {
-        // Sample distribution
-        [
-            (bucket: "<1h", count: 45),
-            (bucket: "1-2h", count: 28),
-            (bucket: "2-4h", count: 15),
-            (bucket: "4-8h", count: 8),
-            (bucket: ">8h", count: 4)
-        ]
+    private var distributionData: [(bucket: String, count: Int, color: Color)] {
+        ResponseDistributionChart.generateDistribution(from: responseWindows.filter(\.isValidForAnalytics))
     }
     
     private var platformChart: some View {
@@ -244,32 +295,75 @@ struct AnalyticsView: View {
             if accounts.isEmpty {
                 emptyChartState
             } else {
-                Chart {
-                    ForEach(accounts) { account in
-                        BarMark(
-                            x: .value("Response Time", Double.random(in: 30...120)),
-                            y: .value("Platform", account.platform.displayName)
-                        )
-                        .foregroundStyle(account.platform.color)
+                let platformData = computePlatformData()
+                if platformData.isEmpty {
+                    emptyChartState
+                } else {
+                    Chart {
+                        ForEach(platformData, id: \.platform) { item in
+                            BarMark(
+                                x: .value("Response Time", item.median / 60),
+                                y: .value("Platform", item.platform.displayName)
+                            )
+                            .foregroundStyle(item.platform.color)
+                            .annotation(position: .trailing) {
+                                Text(formatDuration(item.median))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
+                    .chartXAxisLabel("Median (minutes)")
                 }
-                .chartXAxisLabel("Median (minutes)")
             }
         }
     }
     
+    private func computePlatformData() -> [(platform: Platform, median: TimeInterval)] {
+        let validWindows = responseWindows.filter(\.isValidForAnalytics)
+        var result: [(platform: Platform, median: TimeInterval)] = []
+        
+        for account in accounts {
+            let platformWindows = validWindows.filter {
+                $0.inboundEvent?.conversation?.sourceAccount?.platform == account.platform
+            }
+            guard !platformWindows.isEmpty else { continue }
+            let latencies = platformWindows.map(\.latencySeconds).sorted()
+            let median = latencies[latencies.count / 2]
+            result.append((platform: account.platform, median: median))
+        }
+        
+        return result
+    }
+    
     private var statsGrid: some View {
+        #if os(macOS)
         LazyVGrid(columns: [
             GridItem(.flexible()),
             GridItem(.flexible()),
             GridItem(.flexible()),
             GridItem(.flexible())
         ], spacing: 16) {
-            StatCard(title: "Fastest", value: "12m", icon: "bolt.fill", color: .green)
-            StatCard(title: "Slowest", value: "4h 32m", icon: "tortoise.fill", color: .orange)
-            StatCard(title: "Total Responses", value: "\(responseWindows.count)", icon: "arrow.right.arrow.left", color: .blue)
-            StatCard(title: "Platforms", value: "\(accounts.count)", icon: "square.stack.3d.up", color: .purple)
+            statCards
         }
+        #else
+        LazyVGrid(columns: [
+            GridItem(.flexible()),
+            GridItem(.flexible())
+        ], spacing: 12) {
+            statCards
+        }
+        #endif
+    }
+    
+    @ViewBuilder
+    private var statCards: some View {
+        let valid = responseWindows.filter(\.isValidForAnalytics)
+        let latencies = valid.map(\.latencySeconds).sorted()
+        StatCard(title: "Fastest", value: latencies.first.map { formatDuration($0) } ?? "--", icon: "bolt.fill", color: .green)
+        StatCard(title: "Slowest", value: latencies.last.map { formatDuration($0) } ?? "--", icon: "tortoise.fill", color: .orange)
+        StatCard(title: "Total Responses", value: "\(valid.count)", icon: "arrow.right.arrow.left", color: .blue)
+        StatCard(title: "Platforms", value: "\(accounts.count)", icon: "square.stack.3d.up", color: .purple)
     }
     
     private var insightsSection: some View {
@@ -278,28 +372,85 @@ struct AnalyticsView: View {
                 .font(.headline)
             
             VStack(spacing: 12) {
-                InsightCard(
-                    icon: "lightbulb.fill",
-                    color: .yellow,
-                    title: "Best Response Time",
-                    description: "Your fastest responses are on Tuesdays between 10am-12pm"
-                )
-                
-                InsightCard(
-                    icon: "exclamationmark.triangle.fill",
-                    color: .orange,
-                    title: "Attention Needed",
-                    description: "Weekend response times have increased by 45% this month"
-                )
-                
-                InsightCard(
-                    icon: "trophy.fill",
-                    color: .green,
-                    title: "Goal Progress",
-                    description: "You've met your 1-hour email response goal 78% of the time"
-                )
+                ForEach(computeInsights(), id: \.title) { insight in
+                    InsightCard(
+                        icon: insight.icon,
+                        color: insight.color,
+                        title: insight.title,
+                        description: insight.description
+                    )
+                }
             }
         }
+    }
+    
+    private struct InsightData: Sendable {
+        let icon: String
+        let color: Color
+        let title: String
+        let description: String
+    }
+    
+    private func computeInsights() -> [InsightData] {
+        let valid = responseWindows.filter(\.isValidForAnalytics)
+        guard !valid.isEmpty else {
+            return [InsightData(
+                icon: "info.circle.fill",
+                color: .blue,
+                title: "Getting Started",
+                description: "Sync your messages to see personalized insights about your response patterns."
+            )]
+        }
+        
+        var insights: [InsightData] = []
+        
+        // Best day/hour insight
+        let dayNames = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        var bestDay = 1
+        var bestDayMedian: TimeInterval = .infinity
+        for day in 1...7 {
+            let dayWindows = valid.filter { $0.dayOfWeek == day }
+            guard !dayWindows.isEmpty else { continue }
+            let latencies = dayWindows.map(\.latencySeconds).sorted()
+            let median = latencies[latencies.count / 2]
+            if median < bestDayMedian {
+                bestDayMedian = median
+                bestDay = day
+            }
+        }
+        insights.append(InsightData(
+            icon: "lightbulb.fill",
+            color: .yellow,
+            title: "Fastest Day",
+            description: "Your fastest responses are on \(dayNames[bestDay])s — median \(formatDuration(bestDayMedian))"
+        ))
+        
+        // Working vs non-working hours
+        let workingWindows = valid.filter(\.isWorkingHours)
+        let offWindows = valid.filter { !$0.isWorkingHours }
+        if !workingWindows.isEmpty && !offWindows.isEmpty {
+            let workMedian = workingWindows.map(\.latencySeconds).sorted()[workingWindows.count / 2]
+            let offMedian = offWindows.map(\.latencySeconds).sorted()[offWindows.count / 2]
+            let ratio = offMedian / max(workMedian, 1)
+            if ratio > 1.5 {
+                insights.append(InsightData(
+                    icon: "moon.fill",
+                    color: .purple,
+                    title: "Off-Hours Slower",
+                    description: "You respond \(String(format: "%.1f", ratio))x slower outside working hours (\(formatDuration(offMedian)) vs \(formatDuration(workMedian)))"
+                ))
+            }
+        }
+        
+        // Total tracked
+        insights.append(InsightData(
+            icon: "chart.bar.fill",
+            color: .blue,
+            title: "Tracking Summary",
+            description: "\(valid.count) response\(valid.count == 1 ? "" : "s") tracked across \(accounts.count) platform\(accounts.count == 1 ? "" : "s")"
+        ))
+        
+        return insights
     }
     
     private var emptyChartState: some View {
@@ -316,16 +467,13 @@ struct AnalyticsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    private var sampleDailyData: [DailyMetrics] {
-        let calendar = Calendar.current
-        return (0..<14).map { daysAgo in
-            DailyMetrics(
-                date: calendar.date(byAdding: .day, value: -daysAgo, to: Date())!,
-                medianLatency: Double.random(in: 1800...7200), // 30min - 2h
-                messageCount: Int.random(in: 10...50),
-                responseCount: Int.random(in: 5...30)
-            )
-        }.reversed()
+    private var realDailyData: [DailyMetrics] {
+        let analyzer = ResponseAnalyzer.shared
+        return analyzer.computeDailyMetrics(
+            windows: responseWindows.map { $0 },
+            platform: appState.selectedPlatform,
+            timeRange: appState.selectedTimeRange
+        )
     }
 }
 
@@ -336,6 +484,14 @@ struct StatCard: View {
     let value: String
     let icon: String
     let color: Color
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
     
     var body: some View {
         VStack(spacing: 8) {
@@ -352,7 +508,7 @@ struct StatCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
 }
@@ -364,6 +520,14 @@ struct InsightCard: View {
     let color: Color
     let title: String
     let description: String
+    
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -383,7 +547,7 @@ struct InsightCard: View {
             Spacer()
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
 }

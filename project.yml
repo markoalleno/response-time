@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.allens
   deploymentTarget:
     macOS: "15.0"
+    iOS: "18.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
 
@@ -13,24 +14,33 @@ settings:
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: FG42YJ5PSB
     ENABLE_STRICT_OBJC_MSGSEND: true
     CODE_SIGN_STYLE: Automatic
-    INFOPLIST_FILE: ResponseTime/Info.plist
+    SWIFT_STRICT_CONCURRENCY: complete
 
 targets:
-  ResponseTime:
+  ResponseTime-macOS:
     type: application
     platform: macOS
-    deploymentTarget: "15.0"
+    deploymentTarget:
+      macOS: "15.0"
     sources:
-      - ResponseTime
+      - path: ResponseTime
+        excludes:
+          - "**/*.entitlements"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime
         INFOPLIST_FILE: ResponseTime/Info.plist
         CODE_SIGN_ENTITLEMENTS: ResponseTime/ResponseTime.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_NAME: Response Time
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
     info:
       path: ResponseTime/Info.plist
       properties:
@@ -44,17 +54,69 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: "Copyright © 2025 Mark Allen. All rights reserved."
-        NSPrincipalClass: NSApplication
     entitlements:
       path: ResponseTime/ResponseTime.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)com.allens.responsetime
 
-  ResponseTimeWidget:
+  ResponseTime-iOS:
+    type: application
+    platform: iOS
+    deploymentTarget:
+      iOS: "18.0"
+    sources:
+      - path: ResponseTime
+        excludes:
+          - "**/*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime
+        INFOPLIST_FILE: ResponseTime/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ResponseTime/ResponseTime-iOS.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_NAME: Response Time
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
+        TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+    info:
+      path: ResponseTime/Info.plist
+      properties:
+        CFBundleName: Response Time
+        CFBundleDisplayName: Response Time
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundlePackageType: APPL
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: false
+    entitlements:
+      path: ResponseTime/ResponseTime-iOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.allens.responsetime
+
+  ResponseTimeWidget-macOS:
     type: app-extension
     platform: macOS
-    deploymentTarget: "15.0"
+    deploymentTarget:
+      macOS: "15.0"
     sources:
       - ResponseTimeWidget
     settings:
@@ -63,6 +125,12 @@ targets:
         PRODUCT_MODULE_NAME: ResponseTimeWidgetExtension
         INFOPLIST_FILE: ResponseTimeWidget/Info.plist
         CODE_SIGN_ENTITLEMENTS: ResponseTimeWidget/ResponseTimeWidget.entitlements
+        SKIP_INSTALL: true
+        PRODUCT_NAME: ResponseTimeWidget
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../Frameworks"
     info:
       path: ResponseTimeWidget/Info.plist
       properties:
@@ -79,15 +147,66 @@ targets:
         com.apple.security.application-groups:
           - $(TeamIdentifierPrefix)com.allens.responsetime
     dependencies:
-      - target: ResponseTime
+      - target: ResponseTime-macOS
+        embed: false
+
+  ResponseTimeWidget-iOS:
+    type: app-extension
+    platform: iOS
+    deploymentTarget:
+      iOS: "18.0"
+    sources:
+      - ResponseTimeWidget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.allens.responsetime.widget
+        PRODUCT_MODULE_NAME: ResponseTimeWidgetExtension
+        INFOPLIST_FILE: ResponseTimeWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ResponseTimeWidget/ResponseTimeWidget-iOS.entitlements
+        SKIP_INSTALL: true
+        PRODUCT_NAME: ResponseTimeWidget
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../Frameworks"
+    info:
+      path: ResponseTimeWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Response Time Widget
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: ResponseTimeWidget/ResponseTimeWidget-iOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.allens.responsetime
+    dependencies:
+      - target: ResponseTime-iOS
         embed: false
 
 schemes:
-  ResponseTime:
+  ResponseTime-macOS:
     build:
       targets:
-        ResponseTime: all
-        ResponseTimeWidget: all
+        ResponseTime-macOS: all
+        ResponseTimeWidget-macOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  ResponseTime-iOS:
+    build:
+      targets:
+        ResponseTime-iOS: all
+        ResponseTimeWidget-iOS: all
     run:
       config: Debug
     profile:

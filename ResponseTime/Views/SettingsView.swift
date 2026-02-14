@@ -1,5 +1,10 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UniformTypeIdentifiers
+#else
+import AppKit
+#endif
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
@@ -14,11 +19,33 @@ struct SettingsView: View {
     @AppStorage("matchingWindowDays") private var matchingWindowDays = 7
     @AppStorage("confidenceThreshold") private var confidenceThreshold = 0.7
     
+    // Notification settings
+    @AppStorage("notificationsEnabled") private var notificationsEnabled = true
+    @AppStorage("thresholdNotificationsEnabled") private var thresholdNotificationsEnabled = true
+    @AppStorage("thresholdMinutes") private var thresholdMinutes = 60
+    @AppStorage("dailySummaryEnabled") private var dailySummaryEnabled = true
+    @AppStorage("dailySummaryHour") private var dailySummaryHour = 21
+    
+    #if os(iOS)
+    @State private var showingExporter = false
+    #endif
+    
     var body: some View {
+        #if os(macOS)
         TabView {
             generalSettings
                 .tabItem {
                     Label("General", systemImage: "gear")
+                }
+            
+            platformsSettings
+                .tabItem {
+                    Label("Platforms", systemImage: "square.stack.3d.up")
+                }
+            
+            notificationSettings
+                .tabItem {
+                    Label("Notifications", systemImage: "bell")
                 }
             
             analyticsSettings
@@ -36,11 +63,100 @@ struct SettingsView: View {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 550, height: 500)
+        #else
+        List {
+            Section("App Behavior") {
+                Toggle("Sync in Background", isOn: $syncInBackground)
+                
+                if syncInBackground {
+                    Picker("Sync Interval", selection: $syncIntervalMinutes) {
+                        Text("15 minutes").tag(15)
+                        Text("30 minutes").tag(30)
+                        Text("1 hour").tag(60)
+                        Text("2 hours").tag(120)
+                    }
+                }
+            }
+            
+            Section {
+                Picker("Start of Day", selection: $workingHoursStart) {
+                    ForEach(0..<24) { hour in
+                        Text(formatHour(hour)).tag(hour)
+                    }
+                }
+                
+                Picker("End of Day", selection: $workingHoursEnd) {
+                    ForEach(0..<24) { hour in
+                        Text(formatHour(hour)).tag(hour)
+                    }
+                }
+                
+                Toggle("Exclude Weekends", isOn: $excludeWeekends)
+            } header: {
+                Text("Working Hours")
+            } footer: {
+                Text("Working hours are used to calculate separate metrics for on vs off hours.")
+            }
+            
+            Section {
+                Picker("Matching Window", selection: $matchingWindowDays) {
+                    Text("3 days").tag(3)
+                    Text("7 days").tag(7)
+                    Text("14 days").tag(14)
+                    Text("30 days").tag(30)
+                }
+                
+                VStack(alignment: .leading) {
+                    Text("Confidence: \(Int(confidenceThreshold * 100))%")
+                    Slider(value: $confidenceThreshold, in: 0.5...1.0, step: 0.05)
+                }
+            } header: {
+                Text("Response Matching")
+            } footer: {
+                Text("Higher confidence thresholds require stronger thread matching.")
+            }
+            
+            Section {
+                privacyInfo
+            } header: {
+                Text("Privacy")
+            }
+            
+            Section {
+                Button("Export All Data (CSV)") {
+                    showingExporter = true
+                }
+                
+                Button("Delete All Data", role: .destructive) {
+                    // Would delete all data
+                }
+            } header: {
+                Text("Your Data")
+            }
+            
+            Section {
+                iOSAboutContent
+            } header: {
+                Text("About")
+            }
+        }
+        .sheet(isPresented: $showingExporter) {
+            ExportDataView()
+        }
+        #endif
     }
     
-    // MARK: - General Settings
+    private func formatHour(_ hour: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h a"
+        let date = Calendar.current.date(from: DateComponents(hour: hour))!
+        return formatter.string(from: date)
+    }
     
+    // MARK: - macOS Settings
+    
+    #if os(macOS)
     private var generalSettings: some View {
         Form {
             Section {
@@ -83,14 +199,65 @@ struct SettingsView: View {
         .padding()
     }
     
-    private func formatHour(_ hour: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
-        let date = Calendar.current.date(from: DateComponents(hour: hour))!
-        return formatter.string(from: date)
+    private var notificationSettings: some View {
+        Form {
+            Section {
+                Toggle("Enable Notifications", isOn: $notificationsEnabled)
+                    .onChange(of: notificationsEnabled) { _, enabled in
+                        Task {
+                            if enabled {
+                                _ = try? await NotificationService.shared.requestAuthorization()
+                            }
+                        }
+                    }
+            } header: {
+                Text("Notifications")
+            }
+            
+            if notificationsEnabled {
+                Section {
+                    Toggle("Alert When Threshold Exceeded", isOn: $thresholdNotificationsEnabled)
+                    
+                    if thresholdNotificationsEnabled {
+                        Picker("Threshold", selection: $thresholdMinutes) {
+                            Text("15 minutes").tag(15)
+                            Text("30 minutes").tag(30)
+                            Text("1 hour").tag(60)
+                            Text("2 hours").tag(120)
+                            Text("4 hours").tag(240)
+                        }
+                    }
+                } header: {
+                    Text("Threshold Alerts")
+                } footer: {
+                    Text("Get notified when a response exceeds the threshold.")
+                }
+                
+                Section {
+                    Toggle("Daily Summary", isOn: $dailySummaryEnabled)
+                    
+                    if dailySummaryEnabled {
+                        Picker("Summary Time", selection: $dailySummaryHour) {
+                            ForEach(6..<23) { hour in
+                                Text(formatHour(hour)).tag(hour)
+                            }
+                        }
+                        .onChange(of: dailySummaryHour) { _, hour in
+                            Task {
+                                try? await NotificationService.shared.scheduleDailySummary(at: hour, minute: 0)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Daily Summary")
+                } footer: {
+                    Text("Receive a daily summary of your response time statistics.")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
     }
-    
-    // MARK: - Analytics Settings
     
     private var analyticsSettings: some View {
         Form {
@@ -125,34 +292,10 @@ struct SettingsView: View {
         .padding()
     }
     
-    // MARK: - Privacy Settings
-    
     private var privacySettings: some View {
         Form {
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Local Processing Only", systemImage: "checkmark.shield.fill")
-                        .foregroundColor(.green)
-                    Text("All data is processed and stored on your device")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("No Message Content", systemImage: "checkmark.shield.fill")
-                        .foregroundColor(.green)
-                    Text("We only access timestamps and participant metadata")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("No Cloud Analytics", systemImage: "checkmark.shield.fill")
-                        .foregroundColor(.green)
-                    Text("No data is sent to external servers")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                privacyInfo
             } header: {
                 Text("Privacy Guarantees")
             }
@@ -175,25 +318,20 @@ struct SettingsView: View {
     }
     
     private func exportData() {
-        // Would export all response data to CSV
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.commaSeparatedText]
         panel.nameFieldStringValue = "response-time-export.csv"
         
         panel.begin { response in
             if response == .OK, let url = panel.url {
-                // Export logic here
                 let csv = "date,platform,from,response_time_minutes\n"
                 try? csv.write(to: url, atomically: true, encoding: .utf8)
             }
         }
     }
     
-    // MARK: - About View
-    
     private var aboutView: some View {
         VStack(spacing: 24) {
-            // App icon
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 64))
                 .foregroundColor(.accentColor)
@@ -225,7 +363,251 @@ struct SettingsView: View {
         }
         .padding(32)
     }
+    
+    private var platformsSettings: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // iMessage Section
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "message.fill")
+                                .font(.title2)
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading) {
+                                Text("iMessage")
+                                    .font(.headline)
+                                Text("Read local Messages database")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            iMessageStatusBadge
+                        }
+                        
+                        Divider()
+                        
+                        if !hasFullDiskAccess {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Full Disk Access Required")
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.orange)
+                                Text("Response Time needs Full Disk Access to read your Messages database. Your messages stay on your device — we only read timestamps.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                Button("Open System Settings") {
+                                    openFullDiskAccessSettings()
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        } else {
+                            Label("Connected — reading from Messages database", systemImage: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.subheadline)
+                        }
+                    }
+                    .padding(8)
+                }
+                
+                // Gmail Section
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "envelope.fill")
+                                .font(.title2)
+                                .foregroundColor(.red)
+                            VStack(alignment: .leading) {
+                                Text("Gmail")
+                                    .font(.headline)
+                                Text("Connect via OAuth")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text("Coming Soon")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                    }
+                    .padding(8)
+                }
+                
+                // Telegram Section
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "paperplane.fill")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                            VStack(alignment: .leading) {
+                                Text("Telegram")
+                                    .font(.headline)
+                                Text("Import from data export")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text("Coming Soon")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                    }
+                    .padding(8)
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+        }
+    }
+    
+    @ViewBuilder
+    private var iMessageStatusBadge: some View {
+        if hasFullDiskAccess {
+            Text("Connected")
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.green.opacity(0.2))
+                .foregroundColor(.green)
+                .cornerRadius(4)
+        } else {
+            Text("Setup Required")
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.2))
+                .foregroundColor(.orange)
+                .cornerRadius(4)
+        }
+    }
+    
+    private var hasFullDiskAccess: Bool {
+        let testPath = NSHomeDirectory() + "/Library/Messages/chat.db"
+        return FileManager.default.isReadableFile(atPath: testPath)
+    }
+    
+    private func openFullDiskAccessSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    #endif
+    
+    // MARK: - Shared Views
+    
+    private var privacyInfo: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Local Processing Only", systemImage: "checkmark.shield.fill")
+                .foregroundColor(.green)
+            Text("All data is processed and stored on your device")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Label("No Message Content", systemImage: "checkmark.shield.fill")
+                .foregroundColor(.green)
+            Text("We only access timestamps and participant metadata")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Label("No Cloud Analytics", systemImage: "checkmark.shield.fill")
+                .foregroundColor(.green)
+            Text("No data is sent to external servers")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    #if os(iOS)
+    private var iOSAboutContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title)
+                    .foregroundColor(.accentColor)
+                VStack(alignment: .leading) {
+                    Text("Response Time")
+                        .font(.headline)
+                    Text("Version 1.0")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Text("Privacy-first response time analytics for your communications.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+            
+            Link("Privacy Policy", destination: URL(string: "https://example.com/privacy")!)
+            Link("Terms of Service", destination: URL(string: "https://example.com/terms")!)
+            Link("Support", destination: URL(string: "mailto:support@example.com")!)
+            
+            Text("© 2025 Mark Allen")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    #endif
 }
+
+// MARK: - Export Data View (iOS)
+
+#if os(iOS)
+struct ExportDataView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var isExporting = false
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 64))
+                    .foregroundColor(.accentColor)
+                
+                Text("Export Your Data")
+                    .font(.title2.bold())
+                
+                Text("Export all your response time data as a CSV file that you can open in Excel, Numbers, or any spreadsheet app.")
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+                
+                Button {
+                    isExporting = true
+                    // Generate and share CSV
+                    let csv = "date,platform,from,response_time_minutes\n"
+                    let data = Data(csv.utf8)
+                    
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("response-time-export.csv")
+                    try? data.write(to: tempURL)
+                    
+                    // Share sheet would go here
+                } label: {
+                    Label("Export CSV", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                
+                Spacer()
+            }
+            .padding(24)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+#endif
 
 #Preview {
     SettingsView()

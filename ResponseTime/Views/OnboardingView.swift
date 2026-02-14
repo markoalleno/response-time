@@ -8,6 +8,14 @@ struct OnboardingView: View {
     
     @State private var currentPage = 0
     
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Page content
@@ -33,7 +41,7 @@ struct OnboardingView: View {
                 
                 // Page indicators
                 HStack(spacing: 8) {
-                    ForEach(0..<4) { index in
+                    ForEach(0..<4, id: \.self) { index in
                         Circle()
                             .fill(index == currentPage ? Color.accentColor : Color.secondary.opacity(0.3))
                             .frame(width: 8, height: 8)
@@ -57,7 +65,9 @@ struct OnboardingView: View {
             }
             .padding()
         }
+        #if os(macOS)
         .frame(width: 600, height: 500)
+        #endif
     }
     
     // MARK: - Welcome Page
@@ -72,6 +82,7 @@ struct OnboardingView: View {
             
             Text("Welcome to Response Time")
                 .font(.largeTitle.bold())
+                .multilineTextAlignment(.center)
             
             Text("Track and improve your communication responsiveness across all your platforms")
                 .font(.title3)
@@ -101,7 +112,7 @@ struct OnboardingView: View {
                 PrivacyFeatureRow(
                     icon: "desktopcomputer",
                     title: "100% Local Processing",
-                    description: "All analysis happens on your Mac"
+                    description: "All analysis happens on your device"
                 )
                 
                 PrivacyFeatureRow(
@@ -122,7 +133,7 @@ struct OnboardingView: View {
                     description: "Delete your data anytime with one click"
                 )
             }
-            .padding(.horizontal, 48)
+            .padding(.horizontal, horizontalPadding)
             
             Spacer()
         }
@@ -141,21 +152,27 @@ struct OnboardingView: View {
             
             Text("Connect Your Platforms")
                 .font(.largeTitle.bold())
+                .multilineTextAlignment(.center)
             
             Text("Response Time works with your favorite communication tools")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
             
+            #if os(macOS)
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 16) {
-                ForEach(Platform.allCases) { platform in
-                    PlatformPreviewCard(platform: platform)
-                }
+                platformPreviewCards
             }
             .padding(.horizontal, 32)
+            #else
+            LazyVStack(spacing: 12) {
+                platformPreviewCards
+            }
+            .padding(.horizontal, 16)
+            #endif
             
             Text("You can add or remove platforms anytime in Settings")
                 .font(.caption)
@@ -164,6 +181,13 @@ struct OnboardingView: View {
             Spacer()
         }
         .padding()
+    }
+    
+    @ViewBuilder
+    private var platformPreviewCards: some View {
+        ForEach(Platform.allCases) { platform in
+            PlatformPreviewCard(platform: platform)
+        }
     }
     
     // MARK: - Complete Page
@@ -198,12 +222,20 @@ struct OnboardingView: View {
                     text: "View your response time insights on the dashboard"
                 )
             }
-            .padding(.horizontal, 48)
+            .padding(.horizontal, horizontalPadding)
             .padding(.top, 16)
             
             Spacer()
         }
         .padding()
+    }
+    
+    private var horizontalPadding: CGFloat {
+        #if os(macOS)
+        return 48
+        #else
+        return 24
+        #endif
     }
 }
 
@@ -235,6 +267,14 @@ struct PrivacyFeatureRow: View {
 struct PlatformPreviewCard: View {
     let platform: Platform
     
+    private var cardBackgroundColor: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlBackgroundColor)
+        #else
+        return Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
@@ -256,7 +296,7 @@ struct PlatformPreviewCard: View {
             Spacer()
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(cardBackgroundColor)
         .cornerRadius(12)
     }
     

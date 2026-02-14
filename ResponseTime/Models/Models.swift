@@ -12,9 +12,15 @@ final class SourceAccount {
     var email: String?
     var isEnabled: Bool
     var syncCheckpoint: Date?
+    var deltaLink: String? // For incremental sync (Microsoft Graph)
     var lastSyncError: String?
     var createdAt: Date
     var updatedAt: Date
+    
+    // Sync settings
+    var syncSentItems: Bool = true
+    var syncInbox: Bool = true
+    var excludedFolders: [String] = []
     
     // Relationships
     @Relationship(deleteRule: .cascade, inverse: \Conversation.sourceAccount)
@@ -38,17 +44,23 @@ final class SourceAccount {
     
     var totalConversations: Int { conversations.count }
     var totalMessages: Int { conversations.reduce(0) { $0 + $1.messageEvents.count } }
+    
+    var isStale: Bool {
+        guard let checkpoint = syncCheckpoint else { return true }
+        return Date().timeIntervalSince(checkpoint) > 3600 // 1 hour
+    }
 }
 
 // MARK: - Conversation
 
 @Model
 final class Conversation {
-    @Attribute(.unique) var id: String // Platform-specific ID
+    @Attribute(.unique) var id: String // Platform-specific ID (thread ID, conversation ID)
     var sourceAccount: SourceAccount?
     var subject: String?
     var isArchived: Bool
     var isExcluded: Bool
+    var excludeReason: String?
     var lastActivityAt: Date
     var createdAt: Date
     
@@ -77,6 +89,14 @@ final class Conversation {
     
     var inboundCount: Int { messageEvents.filter { $0.direction == .inbound }.count }
     var outboundCount: Int { messageEvents.filter { $0.direction == .outbound }.count }
+    
+    var sortedEvents: [MessageEvent] {
+        messageEvents.sorted { $0.timestamp < $1.timestamp }
+    }
+    
+    var otherParticipants: [Participant] {
+        participants.filter { !$0.isMe }
+    }
 }
 
 // MARK: - Participant
@@ -88,6 +108,8 @@ final class Participant {
     var displayName: String?
     var isMe: Bool
     var firstSeenAt: Date
+    var isExcluded: Bool = false
+    var excludeReason: String?
     
     // Relationships
     @Relationship(deleteRule: .nullify)
@@ -107,6 +129,13 @@ final class Participant {
     }
     
     var label: String { displayName ?? email }
+    
+    var initials: String {
+        let name = displayName ?? email
+        let parts = name.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        let letters = parts.prefix(2).compactMap { $0.first.map(String.init) }
+        return letters.joined().uppercased()
+    }
 }
 
 // MARK: - Message Event
@@ -121,6 +150,11 @@ final class MessageEvent {
     var headersHash: Data? // Privacy-preserving identifier
     var isExcluded: Bool
     var excludeReason: String?
+    
+    // Threading headers (for matching)
+    var messageIdHeader: String?
+    var inReplyToHeader: String?
+    var referencesHeader: String?
     
     // Relationships
     @Relationship(deleteRule: .nullify, inverse: \ResponseWindow.inboundEvent)
@@ -156,6 +190,11 @@ final class ResponseWindow {
     var isValidForAnalytics: Bool
     var computedAt: Date
     
+    // Metadata for filtering
+    var isWorkingHours: Bool = true
+    var dayOfWeek: Int = 1 // 1-7 (Sunday-Saturday)
+    var hourOfDay: Int = 12 // 0-23
+    
     init(
         id: UUID = UUID(),
         inboundEvent: MessageEvent? = nil,
@@ -172,10 +211,25 @@ final class ResponseWindow {
         self.matchingMethod = matchingMethod
         self.isValidForAnalytics = confidence >= 0.7
         self.computedAt = Date()
+        
+        // Compute time metadata
+        if let timestamp = inboundEvent?.timestamp {
+            let calendar = Calendar.current
+            self.dayOfWeek = calendar.component(.weekday, from: timestamp)
+            self.hourOfDay = calendar.component(.hour, from: timestamp)
+        }
     }
     
     var formattedLatency: String {
         formatDuration(latencySeconds)
+    }
+    
+    var latencyMinutes: Double {
+        latencySeconds / 60
+    }
+    
+    var latencyHours: Double {
+        latencySeconds / 3600
     }
 }
 
@@ -189,6 +243,10 @@ final class ResponseGoal {
     var isEnabled: Bool
     var createdAt: Date
     var updatedAt: Date
+    
+    // Additional settings
+    var workingHoursOnly: Bool = false
+    var notifyWhenExceeded: Bool = false
     
     init(
         id: UUID = UUID(),
@@ -207,9 +265,56 @@ final class ResponseGoal {
     var formattedTarget: String {
         formatDuration(targetLatencySeconds)
     }
+    
+    var targetMinutes: Int {
+        Int(targetLatencySeconds / 60)
+    }
 }
 
-// MARK: - Analytics Models
+// MARK: - User Preferences
+
+@Model
+final class UserPreferences {
+    @Attribute(.unique) var id: UUID
+    
+    // Working hours
+    var workingHoursStart: Int = 9 // 9 AM
+    var workingHoursEnd: Int = 17 // 5 PM
+    var workingDays: [Int] = [2, 3, 4, 5, 6] // Monday-Friday (1=Sun, 7=Sat)
+    var timezone: String = TimeZone.current.identifier
+    
+    // Analytics settings
+    var matchingWindowDays: Int = 7
+    var confidenceThreshold: Double = 0.7
+    var excludeAutoReplies: Bool = true
+    var excludeMailingLists: Bool = true
+    var excludeCalendarInvites: Bool = true
+    
+    // Sync settings
+    var syncInBackground: Bool = false
+    var syncIntervalMinutes: Int = 30
+    var syncOnLaunch: Bool = true
+    
+    // UI settings
+    var showMenuBarIcon: Bool = true
+    var defaultTimeRange: String = "week"
+    
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+    
+    func isWorkingHour(_ date: Date) -> Bool {
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: date)
+        let weekday = calendar.component(.weekday, from: date)
+        
+        return workingDays.contains(weekday) &&
+               hour >= workingHoursStart &&
+               hour < workingHoursEnd
+    }
+}
+
+// MARK: - Analytics Models (Non-persistent)
 
 struct ResponseMetrics: Sendable {
     let platform: Platform?
@@ -243,7 +348,7 @@ struct ResponseMetrics: Sendable {
         return .flat
     }
     
-    enum TrendDirection {
+    enum TrendDirection: Sendable {
         case improving, flat, declining
         
         var icon: String {
@@ -279,6 +384,14 @@ struct HourlyMetrics: Identifiable, Sendable {
     let responseCount: Int
 }
 
+struct PlatformMetrics: Identifiable, Sendable {
+    let id: String
+    let platform: Platform
+    let medianLatency: TimeInterval
+    let sampleCount: Int
+    let goalProgress: Double?
+}
+
 // MARK: - Helpers
 
 func formatDuration(_ seconds: TimeInterval) -> String {
@@ -301,5 +414,17 @@ func formatDuration(_ seconds: TimeInterval) -> String {
             return "\(days)d"
         }
         return "\(days)d \(hours)h"
+    }
+}
+
+func formatDurationShort(_ seconds: TimeInterval) -> String {
+    if seconds < 60 {
+        return "\(Int(seconds))s"
+    } else if seconds < 3600 {
+        return "\(Int(seconds / 60))m"
+    } else if seconds < 86400 {
+        return "\(Int(seconds / 3600))h"
+    } else {
+        return "\(Int(seconds / 86400))d"
     }
 }
