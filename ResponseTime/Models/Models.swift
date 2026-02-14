@@ -498,6 +498,82 @@ struct ResponseScore: Sendable {
     }
 }
 
+// MARK: - Score History
+
+@Model
+final class ScoreHistory {
+    @Attribute(.unique) var id: UUID
+    var recordedAt: Date
+    var timeRange: String // "week", "month", etc.
+    
+    // Overall score
+    var overall: Int
+    var grade: String
+    
+    // Component scores
+    var speedScore: Int
+    var consistencyScore: Int
+    var coverageScore: Int
+    var trendScore: Int
+    var improvementScore: Int
+    
+    // Supporting metrics
+    var totalResponses: Int
+    var medianLatency: TimeInterval
+    var p90Latency: TimeInterval
+    var coefficientOfVariation: Double
+    
+    init(
+        id: UUID = UUID(),
+        recordedAt: Date = Date(),
+        timeRange: String,
+        overall: Int,
+        grade: String,
+        speedScore: Int,
+        consistencyScore: Int,
+        coverageScore: Int,
+        trendScore: Int,
+        improvementScore: Int,
+        totalResponses: Int,
+        medianLatency: TimeInterval,
+        p90Latency: TimeInterval,
+        coefficientOfVariation: Double
+    ) {
+        self.id = id
+        self.recordedAt = recordedAt
+        self.timeRange = timeRange
+        self.overall = overall
+        self.grade = grade
+        self.speedScore = speedScore
+        self.consistencyScore = consistencyScore
+        self.coverageScore = coverageScore
+        self.trendScore = trendScore
+        self.improvementScore = improvementScore
+        self.totalResponses = totalResponses
+        self.medianLatency = medianLatency
+        self.p90Latency = p90Latency
+        self.coefficientOfVariation = coefficientOfVariation
+    }
+    
+    /// Create from ResponseScoreEngine result
+    static func from(score: ResponseScoreEngine.ResponseScore, timeRange: TimeRange) -> ScoreHistory {
+        ScoreHistory(
+            timeRange: timeRange.rawValue,
+            overall: score.overall,
+            grade: score.grade,
+            speedScore: score.speedScore,
+            consistencyScore: score.consistencyScore,
+            coverageScore: score.coverageScore,
+            trendScore: score.trendScore,
+            improvementScore: score.improvementScore,
+            totalResponses: score.totalResponses,
+            medianLatency: score.medianLatency,
+            p90Latency: score.p90Latency,
+            coefficientOfVariation: score.coefficientOfVariation
+        )
+    }
+}
+
 // MARK: - Helpers
 
 func formatDuration(_ seconds: TimeInterval) -> String {
