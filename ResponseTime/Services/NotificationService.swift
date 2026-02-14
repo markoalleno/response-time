@@ -163,6 +163,42 @@ final class NotificationService: Sendable {
         try await UNUserNotificationCenter.current().add(request)
     }
     
+    // MARK: - Weekly Summary Notification
+    
+    func sendWeeklySummary(
+        medianLatency: TimeInterval,
+        responseCount: Int,
+        grade: String,
+        streakDays: Int,
+        improvement: Double? = nil
+    ) async throws {
+        let content = UNMutableNotificationContent()
+        content.title = "📅 Weekly Response Time Summary"
+        
+        var body = "Grade: \(grade) · \(responseCount) responses · Median: \(formatDuration(medianLatency))"
+        if streakDays > 0 {
+            body += "\n🔥 \(streakDays) day streak"
+        }
+        if let trend = improvement {
+            if trend < 0 {
+                body += "\n📈 \(Int(abs(trend)))% faster than last week!"
+            } else if trend > 0 {
+                body += "\n📉 \(Int(trend))% slower than last week"
+            }
+        }
+        
+        content.body = body
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: "weekly_summary_\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+        
+        try await UNUserNotificationCenter.current().add(request)
+    }
+    
     // MARK: - Streak Notifications
     
     func notifyStreakRecord(goalName: String, streakDays: Int) async throws {
