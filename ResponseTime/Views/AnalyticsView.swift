@@ -773,158 +773,23 @@ struct AnalyticsView: View {
     
     private func computeInsights() -> [InsightData] {
         let valid = responseWindows.filter(\.isValidForAnalytics)
-        guard !valid.isEmpty else {
-            return [InsightData(
-                icon: "info.circle.fill",
-                color: .blue,
-                title: "Getting Started",
-                description: "Sync your messages to see personalized insights about your response patterns."
-            )]
+        let engineInsights = InsightsEngine.shared.generateInsights(
+            from: Array(responseWindows),
+            timeRange: appState.selectedTimeRange,
+            minimumSampleSize: 5
+        )
+        
+        // Convert engine insights to view model
+        var insights = engineInsights.map { insight in
+            InsightData(
+                icon: insight.icon,
+                color: colorFromString(insight.color),
+                title: insight.title,
+                description: insight.actionable ?? insight.description
+            )
         }
         
-        var insights: [InsightData] = []
-        let dayNames = ["", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        let dayShort = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        
-        // Best day insight
-        var bestDay = 1, worstDay = 1
-        var bestDayMedian: TimeInterval = .infinity
-        var worstDayMedian: TimeInterval = 0
-        for day in 1...7 {
-            let dayWindows = valid.filter { $0.dayOfWeek == day }
-            guard !dayWindows.isEmpty else { continue }
-            let latencies = dayWindows.map(\.latencySeconds).sorted()
-            let median = latencies[latencies.count / 2]
-            if median < bestDayMedian { bestDayMedian = median; bestDay = day }
-            if median > worstDayMedian { worstDayMedian = median; worstDay = day }
-        }
-        if bestDay != worstDay && bestDayMedian < .infinity {
-            insights.append(InsightData(
-                icon: "calendar.badge.clock",
-                color: .green,
-                title: "You respond faster on \(dayNames[bestDay])s",
-                description: "Median \(formatDuration(bestDayMedian)) on \(dayShort[bestDay]) vs \(formatDuration(worstDayMedian)) on \(dayShort[worstDay])"
-            ))
-        }
-        
-        // Best hour insight
-        var bestHour = 0
-        var bestHourMedian: TimeInterval = .infinity
-        for hour in 0..<24 {
-            let hourWindows = valid.filter { $0.hourOfDay == hour }
-            guard hourWindows.count >= 2 else { continue }
-            let latencies = hourWindows.map(\.latencySeconds).sorted()
-            let median = latencies[latencies.count / 2]
-            if median < bestHourMedian { bestHourMedian = median; bestHour = hour }
-        }
-        if bestHourMedian < .infinity {
-            let hourStr = bestHour == 0 ? "12 AM" : bestHour < 12 ? "\(bestHour) AM" : bestHour == 12 ? "12 PM" : "\(bestHour - 12) PM"
-            insights.append(InsightData(
-                icon: "clock.fill",
-                color: .blue,
-                title: "Peak Hour: \(hourStr)",
-                description: "Messages received around \(hourStr) get your fastest replies — median \(formatDuration(bestHourMedian))"
-            ))
-        }
-        
-        // Working vs non-working hours
-        let workingWindows = valid.filter(\.isWorkingHours)
-        let offWindows = valid.filter { !$0.isWorkingHours }
-        if !workingWindows.isEmpty && !offWindows.isEmpty {
-            let workMedian = workingWindows.map(\.latencySeconds).sorted()[workingWindows.count / 2]
-            let offMedian = offWindows.map(\.latencySeconds).sorted()[offWindows.count / 2]
-            let ratio = offMedian / max(workMedian, 1)
-            if ratio > 1.5 {
-                insights.append(InsightData(
-                    icon: "moon.fill",
-                    color: .purple,
-                    title: "Off-Hours Slower",
-                    description: "You respond \(String(format: "%.1f", ratio))x slower outside working hours (\(formatDuration(offMedian)) vs \(formatDuration(workMedian)))"
-                ))
-            } else if ratio < 0.8 {
-                insights.append(InsightData(
-                    icon: "sun.max.fill",
-                    color: .orange,
-                    title: "Faster Off-Hours",
-                    description: "You actually respond faster outside work hours — \(formatDuration(offMedian)) vs \(formatDuration(workMedian)) during work"
-                ))
-            }
-        }
-        
-        // Speed tier insight
-        let latencies = valid.map(\.latencySeconds).sorted()
-        let median = latencies[latencies.count / 2]
-        let under30min = valid.filter { $0.latencySeconds < 1800 }.count
-        let under30pct = Double(under30min) / Double(valid.count) * 100
-        if under30pct > 50 {
-            insights.append(InsightData(
-                icon: "bolt.fill",
-                color: .yellow,
-                title: "Speed Demon",
-                description: "\(Int(under30pct))% of your responses are under 30 minutes. You're a fast responder!"
-            ))
-        } else if median > 14400 {
-            insights.append(InsightData(
-                icon: "tortoise.fill",
-                color: .orange,
-                title: "Taking Your Time",
-                description: "Your median response is \(formatDuration(median)). Consider setting tighter goals."
-            ))
-        }
-        
-        // Improving/declining trend
-        let calendar = Calendar.current
-        let oneWeekAgo = calendar.date(byAdding: .day, value: -7, to: Date())!
-        let twoWeeksAgo = calendar.date(byAdding: .day, value: -14, to: Date())!
-        let thisWeek = valid.filter { ($0.inboundEvent?.timestamp ?? .distantPast) >= oneWeekAgo }
-        let lastWeek = valid.filter {
-            let t = $0.inboundEvent?.timestamp ?? .distantPast
-            return t >= twoWeeksAgo && t < oneWeekAgo
-        }
-        if thisWeek.count >= 3 && lastWeek.count >= 3 {
-            let thisMedian = thisWeek.map(\.latencySeconds).sorted()[thisWeek.count / 2]
-            let lastMedian = lastWeek.map(\.latencySeconds).sorted()[lastWeek.count / 2]
-            let change = ((thisMedian - lastMedian) / max(lastMedian, 1)) * 100
-            if change < -15 {
-                insights.append(InsightData(
-                    icon: "arrow.down.right",
-                    color: .green,
-                    title: "Improving! 📈",
-                    description: "Your response time dropped \(Int(abs(change)))% this week (\(formatDuration(thisMedian)) vs \(formatDuration(lastMedian)) last week)"
-                ))
-            } else if change > 15 {
-                insights.append(InsightData(
-                    icon: "arrow.up.right",
-                    color: .red,
-                    title: "Slowing Down",
-                    description: "Response time increased \(Int(change))% this week (\(formatDuration(thisMedian)) vs \(formatDuration(lastMedian)) last week)"
-                ))
-            }
-        }
-        
-        // Consistency insight
-        if latencies.count >= 5 {
-            let q1 = latencies[latencies.count / 4]
-            let q3 = latencies[3 * latencies.count / 4]
-            let iqr = q3 - q1
-            if iqr < median * 0.5 {
-                insights.append(InsightData(
-                    icon: "metronome.fill",
-                    color: .teal,
-                    title: "Consistent Responder",
-                    description: "Your response times are tightly clustered. Most fall between \(formatDuration(q1)) and \(formatDuration(q3))."
-                ))
-            } else if iqr > median * 2 {
-                insights.append(InsightData(
-                    icon: "waveform.path",
-                    color: .orange,
-                    title: "Variable Response Times",
-                    description: "Your responses range widely — from \(formatDuration(q1)) to \(formatDuration(q3)). Consider identifying what causes delays."
-                ))
-            }
-        }
-        
-        // Tracking summary (always last)
+        // Always add tracking summary at the end
         insights.append(InsightData(
             icon: "chart.bar.fill",
             color: .blue,
@@ -933,6 +798,19 @@ struct AnalyticsView: View {
         ))
         
         return insights
+    }
+    
+    private func colorFromString(_ colorName: String) -> Color {
+        switch colorName {
+        case "green": return .green
+        case "blue": return .blue
+        case "purple": return .purple
+        case "orange": return .orange
+        case "red": return .red
+        case "yellow": return .yellow
+        case "teal": return .teal
+        default: return .blue
+        }
     }
     
     private var emptyChartState: some View {
