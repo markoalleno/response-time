@@ -146,6 +146,8 @@ struct ContactsView: View {
         #endif
     }
     
+    @State private var contactNames: [String: String] = [:]
+    
     private func loadData() async {
         isLoading = true
         errorMessage = nil
@@ -164,6 +166,12 @@ struct ContactsView: View {
             contacts = fetchedContacts
             conversations = fetchedConversations
             overallStats = fetchedStats
+            
+            // Resolve contact names
+            let identifiers = fetchedContacts.map(\.identifier)
+            let resolver = ContactResolver.shared
+            _ = await resolver.requestAccessAndLoad()
+            contactNames = await resolver.resolveAll(identifiers)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -266,7 +274,7 @@ struct ContactsView: View {
     private var contactList: some View {
         LazyVStack(spacing: 8) {
             ForEach(sortedContacts) { contact in
-                RealContactRow(contact: contact)
+                RealContactRow(contact: contact, resolvedName: contactNames[contact.identifier])
                     .onTapGesture {
                         selectedContact = contact
                     }
@@ -288,7 +296,8 @@ struct ContactsView: View {
         if !searchText.isEmpty {
             result = result.filter {
                 $0.identifier.localizedCaseInsensitiveContains(searchText) ||
-                ($0.displayName?.localizedCaseInsensitiveContains(searchText) ?? false)
+                ($0.displayName?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (contactNames[$0.identifier]?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
         
@@ -367,6 +376,7 @@ struct ContactSummaryCard: View {
 
 struct RealContactRow: View {
     let contact: iMessageConnector.ContactStats
+    var resolvedName: String? = nil
     
     private var cardBackgroundColor: Color {
         #if os(macOS)
@@ -447,7 +457,7 @@ struct RealContactRow: View {
     }
     
     private var displayName: String {
-        contact.displayName ?? formatPhoneOrEmail(contact.identifier)
+        resolvedName ?? contact.displayName ?? formatPhoneOrEmail(contact.identifier)
     }
     
     private var initials: String {
