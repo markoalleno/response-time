@@ -259,6 +259,9 @@ struct SettingsView: View {
         .padding()
     }
     
+    @State private var showingResetConfirm = false
+    @State private var showingDeleteConfirm = false
+    
     private var analyticsSettings: some View {
         Form {
             Section {
@@ -281,15 +284,49 @@ struct SettingsView: View {
             
             Section {
                 Button("Reset Analytics") {
-                    // Would reset all response windows
+                    showingResetConfirm = true
                 }
                 .foregroundColor(.red)
+                .confirmationDialog("Reset all analytics?", isPresented: $showingResetConfirm, titleVisibility: .visible) {
+                    Button("Reset", role: .destructive) {
+                        resetAnalytics()
+                    }
+                } message: {
+                    Text("This will delete all computed response windows. Your synced messages will be preserved and analytics can be recomputed.")
+                }
             } header: {
                 Text("Data Management")
             }
         }
         .formStyle(.grouped)
         .padding()
+    }
+    
+    private func resetAnalytics() {
+        let descriptor = FetchDescriptor<ResponseWindow>()
+        if let windows = try? modelContext.fetch(descriptor) {
+            for window in windows {
+                modelContext.delete(window)
+            }
+            try? modelContext.save()
+        }
+    }
+    
+    private func deleteAllData() {
+        // Delete in dependency order
+        for type in [ResponseWindow.self, MessageEvent.self, Conversation.self, Participant.self, SourceAccount.self, ResponseGoal.self] as [any PersistentModel.Type] {
+            deleteAll(type, from: modelContext)
+        }
+        try? modelContext.save()
+    }
+    
+    private func deleteAll<T: PersistentModel>(_ type: T.Type, from context: ModelContext) {
+        let descriptor = FetchDescriptor<T>()
+        if let items = try? context.fetch(descriptor) {
+            for item in items {
+                context.delete(item)
+            }
+        }
     }
     
     private var privacySettings: some View {
@@ -306,9 +343,16 @@ struct SettingsView: View {
                 }
                 
                 Button("Delete All Data") {
-                    // Would delete all data
+                    showingDeleteConfirm = true
                 }
                 .foregroundColor(.red)
+                .confirmationDialog("Delete all data?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
+                    Button("Delete Everything", role: .destructive) {
+                        deleteAllData()
+                    }
+                } message: {
+                    Text("This will permanently delete all your response time data, accounts, and goals. This cannot be undone.")
+                }
             } header: {
                 Text("Your Data")
             }
@@ -318,16 +362,12 @@ struct SettingsView: View {
     }
     
     private func exportData() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "response-time-export.csv"
-        
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                let csv = "date,platform,from,response_time_minutes\n"
-                try? csv.write(to: url, atomically: true, encoding: .utf8)
-            }
-        }
+        let descriptor = FetchDescriptor<ResponseWindow>(
+            sortBy: [SortDescriptor(\.computedAt, order: .reverse)]
+        )
+        let windows = (try? modelContext.fetch(descriptor)) ?? []
+        let result = ExportService.shared.exportResponseData(windows: windows, format: .csv)
+        ExportService.shared.saveExport(result)
     }
     
     private var aboutView: some View {
