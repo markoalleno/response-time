@@ -318,4 +318,136 @@ final class ResponseAnalyzerTests: XCTestCase {
             XCTAssertLessThan(range.startDate, now)
         }
     }
+    
+    // MARK: - Export Service
+    
+    func testExportCSV() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conversation = Conversation(id: "export_conv", sourceAccount: account)
+        modelContext.insert(conversation)
+        
+        let inbound = MessageEvent(
+            id: "export_in",
+            conversation: conversation,
+            timestamp: Date().addingTimeInterval(-3600),
+            direction: .inbound,
+            participantEmail: "test@test.com"
+        )
+        modelContext.insert(inbound)
+        
+        let window = ResponseWindow(
+            inboundEvent: inbound,
+            latencySeconds: 1800,
+            confidence: 0.9,
+            matchingMethod: .timeWindow
+        )
+        
+        let result = ExportService.shared.exportResponseData(windows: [window], format: .csv)
+        XCTAssertFalse(result.data.isEmpty)
+        XCTAssertTrue(result.filename.hasSuffix(".csv"))
+        XCTAssertEqual(result.mimeType, "text/csv")
+        
+        let csv = String(data: result.data, encoding: .utf8)!
+        XCTAssertTrue(csv.contains("date,time,platform"))
+        XCTAssertTrue(csv.contains("test@test.com"))
+    }
+    
+    func testExportJSON() {
+        let account = SourceAccount(platform: .gmail, displayName: "Gmail")
+        modelContext.insert(account)
+        let conversation = Conversation(id: "json_conv", sourceAccount: account)
+        modelContext.insert(conversation)
+        
+        let inbound = MessageEvent(
+            id: "json_in",
+            conversation: conversation,
+            timestamp: Date(),
+            direction: .inbound,
+            participantEmail: "user@gmail.com"
+        )
+        modelContext.insert(inbound)
+        
+        let window = ResponseWindow(
+            inboundEvent: inbound,
+            latencySeconds: 3600,
+            confidence: 1.0,
+            matchingMethod: .threadId
+        )
+        
+        let result = ExportService.shared.exportResponseData(windows: [window], format: .json)
+        XCTAssertFalse(result.data.isEmpty)
+        XCTAssertTrue(result.filename.hasSuffix(".json"))
+        
+        let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        XCTAssertNotNil(json)
+        XCTAssertEqual(json?["total_records"] as? Int, 1)
+    }
+    
+    func testExportSummaryReport() {
+        let metrics = ResponseMetrics(
+            platform: nil,
+            timeRange: .week,
+            sampleCount: 10,
+            medianLatency: 1800,
+            meanLatency: 2400,
+            p90Latency: 5400,
+            p95Latency: 7200,
+            minLatency: 300,
+            maxLatency: 10800,
+            workingHoursMedian: 1200,
+            nonWorkingHoursMedian: 3600,
+            previousPeriodMedian: 2100,
+            trendPercentage: -14.3
+        )
+        
+        let result = ExportService.shared.exportSummaryReport(metrics: metrics, dailyData: [], goals: [])
+        let markdown = String(data: result.data, encoding: .utf8)!
+        XCTAssertTrue(markdown.contains("Response Time Summary Report"))
+        XCTAssertTrue(markdown.contains("30m"))
+        XCTAssertTrue(result.filename.hasSuffix(".md"))
+    }
+    
+    // MARK: - ResponseWindow Properties
+    
+    func testResponseWindowFormattedLatency() {
+        let window = ResponseWindow(latencySeconds: 5400, matchingMethod: .timeWindow)
+        XCTAssertEqual(window.formattedLatency, "1h 30m")
+        XCTAssertEqual(window.latencyMinutes, 90)
+        XCTAssertEqual(window.latencyHours, 1.5)
+    }
+    
+    // MARK: - ResponseGoal Properties
+    
+    func testResponseGoalFormattedTarget() {
+        let goal = ResponseGoal(targetLatencySeconds: 3600)
+        XCTAssertEqual(goal.formattedTarget, "1h")
+        XCTAssertEqual(goal.targetMinutes, 60)
+    }
+    
+    // MARK: - Conversation Properties
+    
+    func testConversationCounts() {
+        let conv = Conversation(id: "count_conv")
+        modelContext.insert(conv)
+        
+        let in1 = MessageEvent(id: "c_in1", conversation: conv, timestamp: Date(), direction: .inbound, participantEmail: "a@b.com")
+        let out1 = MessageEvent(id: "c_out1", conversation: conv, timestamp: Date(), direction: .outbound, participantEmail: "me@b.com")
+        modelContext.insert(in1)
+        modelContext.insert(out1)
+        
+        XCTAssertEqual(conv.inboundCount, 1)
+        XCTAssertEqual(conv.outboundCount, 1)
+    }
+    
+    // MARK: - Participant
+    
+    func testParticipantInitials() {
+        let p = Participant(email: "john@test.com", displayName: "John Doe")
+        XCTAssertEqual(p.initials, "JD")
+        XCTAssertEqual(p.label, "John Doe")
+        
+        let p2 = Participant(email: "hello@world.com")
+        XCTAssertEqual(p2.label, "hello@world.com")
+    }
 }
