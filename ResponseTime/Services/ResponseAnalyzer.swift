@@ -380,7 +380,63 @@ class SyncManager {
             syncProgress = Double(index + 1) * step
         }
         
+        // Update goal streaks
+        updateGoalStreaks(modelContext: modelContext)
+        
         lastSyncDate = Date()
+    }
+    
+    private func updateGoalStreaks(modelContext: ModelContext) {
+        let goalFetch = FetchDescriptor<ResponseGoal>()
+        guard let goals = try? modelContext.fetch(goalFetch), !goals.isEmpty else { return }
+        
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let windowFetch = FetchDescriptor<ResponseWindow>()
+        guard let allWindows = try? modelContext.fetch(windowFetch) else { return }
+        let valid = allWindows.filter(\.isValidForAnalytics)
+        
+        for goal in goals where goal.isEnabled {
+            // Check if today met the goal
+            let todayWindows = valid.filter {
+                guard let t = $0.inboundEvent?.timestamp else { return false }
+                if let platform = goal.platform {
+                    guard $0.inboundEvent?.conversation?.sourceAccount?.platform == platform else { return false }
+                }
+                return calendar.isDate(t, inSameDayAs: today)
+            }
+            
+            let todayMet: Bool
+            if todayWindows.isEmpty {
+                todayMet = false // No data = no streak
+            } else {
+                let latencies = todayWindows.map(\.latencySeconds).sorted()
+                let median = latencies[latencies.count / 2]
+                todayMet = median <= goal.targetLatencySeconds
+            }
+            
+            if todayMet {
+                if let lastDate = goal.lastStreakDate, calendar.isDate(lastDate, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: today)!) {
+                    // Consecutive day
+                    goal.currentStreak += 1
+                } else if let lastDate = goal.lastStreakDate, calendar.isDate(lastDate, inSameDayAs: today) {
+                    // Already updated today
+                } else {
+                    // New streak
+                    goal.currentStreak = 1
+                }
+                goal.lastStreakDate = today
+                
+                if goal.currentStreak > goal.longestStreak {
+                    goal.longestStreak = goal.currentStreak
+                    // New record! Could trigger notification here
+                }
+            } else if let lastDate = goal.lastStreakDate, !calendar.isDate(lastDate, inSameDayAs: today) && !calendar.isDate(lastDate, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: today)!) {
+                // Streak broken
+                goal.currentStreak = 0
+            }
+        }
     }
     
     private func syncAccount(_ account: SourceAccount, modelContext: ModelContext) async throws {
