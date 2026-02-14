@@ -271,6 +271,15 @@ struct ContentView: View {
         guard UserDefaults.standard.bool(forKey: "notificationsEnabled"),
               UserDefaults.standard.bool(forKey: "thresholdNotificationsEnabled") else { return }
         
+        // Respect quiet hours
+        if UserDefaults.standard.bool(forKey: "quietHoursEnabled") {
+            let hour = Calendar.current.component(.hour, from: Date())
+            let start = UserDefaults.standard.integer(forKey: "quietHoursStart")
+            let end = UserDefaults.standard.integer(forKey: "quietHoursEnd")
+            let isQuiet = start < end ? (hour >= start && hour < end) : (hour >= start || hour < end)
+            if isQuiet { return }
+        }
+        
         let thresholdMinutes = UserDefaults.standard.integer(forKey: "thresholdMinutes")
         let threshold = TimeInterval(max(thresholdMinutes, 60) * 60)
         

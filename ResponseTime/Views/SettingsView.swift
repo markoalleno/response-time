@@ -25,6 +25,9 @@ struct SettingsView: View {
     @AppStorage("thresholdMinutes") private var thresholdMinutes = 60
     @AppStorage("dailySummaryEnabled") private var dailySummaryEnabled = true
     @AppStorage("dailySummaryHour") private var dailySummaryHour = 21
+    @AppStorage("quietHoursEnabled") private var quietHoursEnabled = false
+    @AppStorage("quietHoursStart") private var quietHoursStart = 22
+    @AppStorage("quietHoursEnd") private var quietHoursEnd = 8
     
     #if os(iOS)
     @State private var showingExporter = false
@@ -231,6 +234,28 @@ struct SettingsView: View {
                     Text("Threshold Alerts")
                 } footer: {
                     Text("Get notified when a response exceeds the threshold.")
+                }
+                
+                Section {
+                    Toggle("Quiet Hours", isOn: $quietHoursEnabled)
+                    
+                    if quietHoursEnabled {
+                        Picker("Start", selection: $quietHoursStart) {
+                            ForEach(0..<24) { hour in
+                                Text(formatHour(hour)).tag(hour)
+                            }
+                        }
+                        
+                        Picker("End", selection: $quietHoursEnd) {
+                            ForEach(0..<24) { hour in
+                                Text(formatHour(hour)).tag(hour)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Quiet Hours")
+                } footer: {
+                    Text("No notifications during quiet hours. Pending responses will still be tracked.")
                 }
                 
                 Section {
