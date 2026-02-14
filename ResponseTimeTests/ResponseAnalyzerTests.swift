@@ -738,4 +738,179 @@ final class ResponseAnalyzerTests: XCTestCase {
         XCTAssertEqual(ThreadingMethod.subjectMatch.rawValue, "subject_match")
         XCTAssertEqual(ThreadingMethod.references.rawValue, "references")
     }
+    
+    // MARK: - Confidence Calculation Tests
+    
+    func testComputeResponseConfidenceFastResponse() {
+        // < 24 hours = full confidence
+        let confidence = computeResponseConfidence(latencySeconds: 3600) // 1 hour
+        XCTAssertEqual(confidence, 1.0)
+    }
+    
+    func testComputeResponseConfidenceOneDayResponse() {
+        // > 24 hours but < 48
+        let confidence = computeResponseConfidence(latencySeconds: 36 * 3600) // 36 hours
+        XCTAssertEqual(confidence, 0.8)
+    }
+    
+    func testComputeResponseConfidenceTwoDayResponse() {
+        // > 48 hours but < 72
+        let confidence = computeResponseConfidence(latencySeconds: 60 * 3600) // 60 hours
+        XCTAssertEqual(confidence, 0.6)
+    }
+    
+    func testComputeResponseConfidenceThreeDayResponse() {
+        // > 72 hours
+        let confidence = computeResponseConfidence(latencySeconds: 80 * 3600) // 80 hours
+        XCTAssertEqual(confidence, 0.4)
+    }
+    
+    func testComputeResponseConfidenceEdgeCases() {
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 0), 1.0)
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 24 * 3600), 1.0) // exactly 24h
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 24 * 3600 + 1), 0.8) // just over 24h
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 48 * 3600), 0.8) // exactly 48h
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 48 * 3600 + 1), 0.6) // just over 48h
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 72 * 3600), 0.6) // exactly 72h
+        XCTAssertEqual(computeResponseConfidence(latencySeconds: 72 * 3600 + 1), 0.4) // just over 72h
+    }
+    
+    // MARK: - SwiftData Index Tests
+    
+    func testSourceAccountIndexes() {
+        // Verify indexes help with common queries
+        let account1 = SourceAccount(platform: .gmail, displayName: "Gmail", isEnabled: true)
+        let account2 = SourceAccount(platform: .imessage, displayName: "iMessage", isEnabled: false)
+        modelContext.insert(account1)
+        modelContext.insert(account2)
+        
+        // Query by platform (should use index)
+        let gmailPlatform = Platform.gmail
+        let gmailDescriptor = FetchDescriptor<SourceAccount>(
+            predicate: #Predicate { $0.platform == gmailPlatform }
+        )
+        let gmailAccounts = try? modelContext.fetch(gmailDescriptor)
+        XCTAssertEqual(gmailAccounts?.count, 1)
+        XCTAssertEqual(gmailAccounts?.first?.platform, .gmail)
+        
+        // Query by isEnabled (should use index)
+        let enabledDescriptor = FetchDescriptor<SourceAccount>(
+            predicate: #Predicate { $0.isEnabled == true }
+        )
+        let enabledAccounts = try? modelContext.fetch(enabledDescriptor)
+        XCTAssertEqual(enabledAccounts?.count, 1)
+        XCTAssertTrue(enabledAccounts?.first?.isEnabled ?? false)
+    }
+    
+    func testResponseWindowIndexes() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conv = Conversation(id: "index_conv", sourceAccount: account)
+        modelContext.insert(conv)
+        
+        let inbound = MessageEvent(id: "index_in", conversation: conv, timestamp: Date(), direction: .inbound, participantEmail: "test@test.com")
+        modelContext.insert(inbound)
+        
+        let validWindow = ResponseWindow(inboundEvent: inbound, latencySeconds: 1800, confidence: 1.0, matchingMethod: .timeWindow)
+        validWindow.isValidForAnalytics = true
+        modelContext.insert(validWindow)
+        
+        let invalidWindow = ResponseWindow(inboundEvent: inbound, latencySeconds: 3600, confidence: 0.5, matchingMethod: .timeWindow)
+        invalidWindow.isValidForAnalytics = false
+        modelContext.insert(invalidWindow)
+        
+        // Query by isValidForAnalytics (should use index)
+        let validDescriptor = FetchDescriptor<ResponseWindow>(
+            predicate: #Predicate { $0.isValidForAnalytics == true }
+        )
+        let validWindows = try? modelContext.fetch(validDescriptor)
+        XCTAssertEqual(validWindows?.count, 1)
+        XCTAssertTrue(validWindows?.first?.isValidForAnalytics ?? false)
+    }
+    
+    // MARK: - TimeRange Fallback Tests
+    
+    func testTimeRangeStartDateFallbacks() {
+        // Even if calendar.date fails, we should get a valid date
+        for range in TimeRange.allCases {
+            let start = range.startDate
+            XCTAssertNotNil(start)
+            XCTAssertTrue(start <= Date())
+        }
+    }
+    
+    // MARK: - Response Window Validation
+    
+    func testResponseWindowIsValidForAnalytics() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conv = Conversation(id: "valid_conv", sourceAccount: account)
+        modelContext.insert(conv)
+        
+        let inbound = MessageEvent(id: "valid_in", conversation: conv, timestamp: Date(), direction: .inbound, participantEmail: "test@test.com")
+        modelContext.insert(inbound)
+        
+        // High confidence = valid
+        let highConfidence = ResponseWindow(inboundEvent: inbound, latencySeconds: 1800, confidence: 0.9, matchingMethod: .threadId)
+        XCTAssertTrue(highConfidence.isValidForAnalytics)
+        
+        // Low confidence = not valid
+        let lowConfidence = ResponseWindow(inboundEvent: inbound, latencySeconds: 1800, confidence: 0.5, matchingMethod: .timeWindow)
+        XCTAssertFalse(lowConfidence.isValidForAnalytics)
+        
+        // Borderline (exactly at threshold)
+        let borderline = ResponseWindow(inboundEvent: inbound, latencySeconds: 1800, confidence: 0.7, matchingMethod: .messageId)
+        XCTAssertTrue(borderline.isValidForAnalytics)
+    }
+    
+    // MARK: - Conversation Participant Tests
+    
+    func testConversationOtherParticipants() {
+        let conv = Conversation(id: "part_conv")
+        modelContext.insert(conv)
+        
+        let me = Participant(email: "me@test.com", displayName: "Me", isMe: true)
+        let other1 = Participant(email: "other1@test.com", displayName: "Other 1", isMe: false)
+        let other2 = Participant(email: "other2@test.com", displayName: "Other 2", isMe: false)
+        
+        modelContext.insert(me)
+        modelContext.insert(other1)
+        modelContext.insert(other2)
+        
+        conv.participants.append(me)
+        conv.participants.append(other1)
+        conv.participants.append(other2)
+        
+        let others = conv.otherParticipants
+        XCTAssertEqual(others.count, 2)
+        XCTAssertFalse(others.contains(where: { $0.isMe }))
+    }
+    
+    // MARK: - Empty State Handling
+    
+    func testEmptyConversationHandling() {
+        let conv = Conversation(id: "empty_conv")
+        modelContext.insert(conv)
+        
+        XCTAssertEqual(conv.inboundCount, 0)
+        XCTAssertEqual(conv.outboundCount, 0)
+        XCTAssertTrue(conv.sortedEvents.isEmpty)
+        XCTAssertTrue(conv.otherParticipants.isEmpty)
+    }
+    
+    func testEmptyAccountHandling() {
+        let account = SourceAccount(platform: .gmail, displayName: "Empty Gmail")
+        modelContext.insert(account)
+        
+        XCTAssertEqual(account.totalConversations, 0)
+        XCTAssertEqual(account.totalMessages, 0)
+        XCTAssertTrue(account.isStale) // No sync = stale
+    }
+    
+    // MARK: - Message Direction Tests
+    
+    func testMessageDirectionRawValues() {
+        XCTAssertEqual(MessageDirection.inbound.rawValue, "inbound")
+        XCTAssertEqual(MessageDirection.outbound.rawValue, "outbound")
+    }
 }
