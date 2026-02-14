@@ -373,6 +373,7 @@ struct DashboardView: View {
                     responseScoreCard
                     responseTimeCard
                     trendCard
+                    workingHoursCard
                     platformBreakdownCard
                     goalsCard
                 }
@@ -381,6 +382,7 @@ struct DashboardView: View {
                     responseScoreCard
                     responseTimeCard
                     trendCard
+                    workingHoursCard
                     platformBreakdownCard
                     goalsCard
                 }
@@ -615,6 +617,65 @@ struct DashboardView: View {
                     .frame(height: 150)
             } else {
                 emptyState
+            }
+        }
+    }
+    
+    private var workingHoursCard: some View {
+        DashboardCard(title: "Work vs Off-Hours", icon: "briefcase.fill") {
+            let valid = recentResponses.filter(\.isValidForAnalytics)
+            let workHrs = valid.filter(\.isWorkingHours)
+            let offHrs = valid.filter { !$0.isWorkingHours }
+            
+            if workHrs.isEmpty && offHrs.isEmpty {
+                emptyState
+            } else {
+                HStack(spacing: 20) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "sun.max.fill")
+                            .foregroundColor(.yellow)
+                        if !workHrs.isEmpty {
+                            let latencies = workHrs.map(\.latencySeconds).sorted()
+                            Text(formatDuration(latencies[latencies.count / 2]))
+                                .font(.title3.bold())
+                        } else {
+                            Text("--")
+                                .font(.title3.bold())
+                                .foregroundColor(.secondary)
+                        }
+                        Text("Work hours")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(workHrs.count) responses")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    Divider()
+                        .frame(height: 50)
+                    
+                    VStack(spacing: 4) {
+                        Image(systemName: "moon.fill")
+                            .foregroundColor(.purple)
+                        if !offHrs.isEmpty {
+                            let latencies = offHrs.map(\.latencySeconds).sorted()
+                            Text(formatDuration(latencies[latencies.count / 2]))
+                                .font(.title3.bold())
+                        } else {
+                            Text("--")
+                                .font(.title3.bold())
+                                .foregroundColor(.secondary)
+                        }
+                        Text("Off hours")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(offHrs.count) responses")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
     }
