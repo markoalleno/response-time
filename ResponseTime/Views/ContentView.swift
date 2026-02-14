@@ -147,6 +147,12 @@ struct ContentView: View {
                     }
                 }
             }
+            
+            Section {
+                NavigationLink(value: Tab.settings) {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
         }
         .listStyle(.sidebar)
         .frame(minWidth: 180)
