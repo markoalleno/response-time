@@ -182,6 +182,15 @@ struct ContentView: View {
             .tag(Tab.analytics)
             
             NavigationStack {
+                WeeklyDigestView()
+                    .navigationTitle("Weekly")
+            }
+            .tabItem {
+                Label("Weekly", systemImage: "calendar.badge.clock")
+            }
+            .tag(Tab.digest)
+            
+            NavigationStack {
                 GoalsView()
                     .navigationTitle("Goals")
             }
