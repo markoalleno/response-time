@@ -253,6 +253,9 @@ final class ResponseGoal {
     var longestStreak: Int = 0
     var lastStreakDate: Date?
     
+    // Ordering
+    var sortOrder: Int = 0
+    
     init(
         id: UUID = UUID(),
         platform: Platform? = nil,

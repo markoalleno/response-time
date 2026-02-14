@@ -5,7 +5,7 @@ struct GoalsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
     
-    @Query private var goals: [ResponseGoal]
+    @Query(sort: \ResponseGoal.sortOrder) private var goals: [ResponseGoal]
     @Query private var accounts: [SourceAccount]
     
     @State private var showingAddGoal = false
@@ -58,6 +58,16 @@ struct GoalsView: View {
                     ForEach(goals) { goal in
                         GoalCard(goal: goal, responseWindows: responseWindows) {
                             deleteGoal(goal)
+                        }
+                        .draggable(goal.id.uuidString)
+                        .dropDestination(for: String.self) { items, _ in
+                            guard let draggedId = items.first,
+                                  let draggedUUID = UUID(uuidString: draggedId),
+                                  let fromIndex = goals.firstIndex(where: { $0.id == draggedUUID }),
+                                  let toIndex = goals.firstIndex(where: { $0.id == goal.id }),
+                                  fromIndex != toIndex else { return false }
+                            reorderGoals(from: fromIndex, to: toIndex)
+                            return true
                         }
                     }
                 }
@@ -363,6 +373,16 @@ struct GoalsView: View {
         }
         
         return StreakData(current: current, longest: longest, last7Days: last7)
+    }
+    
+    private func reorderGoals(from: Int, to: Int) {
+        var ordered = goals.map { $0 }
+        let item = ordered.remove(at: from)
+        ordered.insert(item, at: to)
+        for (index, goal) in ordered.enumerated() {
+            goal.sortOrder = index
+        }
+        try? modelContext.save()
     }
     
     private func deleteGoal(_ goal: ResponseGoal) {
