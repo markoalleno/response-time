@@ -17,7 +17,8 @@ final class ResponseAnalyzerTests: XCTestCase {
             ResponseWindow.self,
             ResponseGoal.self,
             Participant.self,
-            UserPreferences.self
+            UserPreferences.self,
+            DismissedPending.self
         ])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         modelContainer = try ModelContainer(for: schema, configurations: [config])
@@ -193,5 +194,128 @@ final class ResponseAnalyzerTests: XCTestCase {
     func testFormatDurationDays() {
         XCTAssertEqual(formatDuration(86400), "1d")
         XCTAssertEqual(formatDuration(90000), "1d 1h")
+    }
+    
+    // MARK: - DismissedPending Model
+    
+    func testDismissedPendingArchiveIsAlwaysActive() {
+        let dismissed = DismissedPending(contactIdentifier: "+1234", action: .archived)
+        modelContext.insert(dismissed)
+        XCTAssertTrue(dismissed.isActive)
+    }
+    
+    func testDismissedPendingSnoozeFutureIsActive() {
+        let until = Date().addingTimeInterval(3600)
+        let dismissed = DismissedPending(contactIdentifier: "+1234", action: .snoozed, snoozeUntil: until)
+        modelContext.insert(dismissed)
+        XCTAssertTrue(dismissed.isActive)
+    }
+    
+    func testDismissedPendingSnoozePastIsInactive() {
+        let until = Date().addingTimeInterval(-3600)
+        let dismissed = DismissedPending(contactIdentifier: "+1234", action: .snoozed, snoozeUntil: until)
+        modelContext.insert(dismissed)
+        XCTAssertFalse(dismissed.isActive)
+    }
+    
+    // MARK: - ResponseGoal Streaks
+    
+    func testResponseGoalStreakFields() {
+        let goal = ResponseGoal(platform: .imessage, targetLatencySeconds: 3600)
+        modelContext.insert(goal)
+        XCTAssertEqual(goal.currentStreak, 0)
+        XCTAssertEqual(goal.longestStreak, 0)
+        XCTAssertNil(goal.lastStreakDate)
+    }
+    
+    // MARK: - Daily Metrics
+    
+    func testComputeDailyMetrics() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conversation = Conversation(id: "daily_conv", sourceAccount: account)
+        modelContext.insert(conversation)
+        
+        let today = Calendar.current.startOfDay(for: Date())
+        var windows: [ResponseWindow] = []
+        
+        for i in 0..<3 {
+            let inbound = MessageEvent(
+                id: "daily_in_\(i)",
+                conversation: conversation,
+                timestamp: today.addingTimeInterval(Double(i) * 3600),
+                direction: .inbound,
+                participantEmail: "test@example.com"
+            )
+            modelContext.insert(inbound)
+            
+            let w = ResponseWindow(
+                inboundEvent: inbound,
+                latencySeconds: Double(i + 1) * 600,
+                confidence: 1.0,
+                matchingMethod: .timeWindow
+            )
+            windows.append(w)
+        }
+        
+        let daily = analyzer.computeDailyMetrics(windows: windows, platform: nil, timeRange: .week)
+        XCTAssertFalse(daily.isEmpty)
+        XCTAssertEqual(daily.first?.responseCount, 3)
+    }
+    
+    // MARK: - Hourly Metrics
+    
+    func testComputeHourlyMetrics() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conversation = Conversation(id: "hourly_conv", sourceAccount: account)
+        modelContext.insert(conversation)
+        
+        let inbound = MessageEvent(
+            id: "hourly_in",
+            conversation: conversation,
+            timestamp: Date(),
+            direction: .inbound,
+            participantEmail: "test@example.com"
+        )
+        modelContext.insert(inbound)
+        
+        let w = ResponseWindow(
+            inboundEvent: inbound,
+            latencySeconds: 1800,
+            confidence: 1.0,
+            matchingMethod: .timeWindow
+        )
+        
+        let hourly = analyzer.computeHourlyMetrics(windows: [w])
+        XCTAssertEqual(hourly.count, 24)
+        let currentHour = Calendar.current.component(.hour, from: Date())
+        XCTAssertEqual(hourly[currentHour].responseCount, 1)
+    }
+    
+    // MARK: - Format Duration Short
+    
+    func testFormatDurationShort() {
+        XCTAssertEqual(formatDurationShort(30), "30s")
+        XCTAssertEqual(formatDurationShort(300), "5m")
+        XCTAssertEqual(formatDurationShort(3600), "1h")
+        XCTAssertEqual(formatDurationShort(86400), "1d")
+    }
+    
+    // MARK: - Platform Enum
+    
+    func testPlatformProperties() {
+        XCTAssertEqual(Platform.gmail.displayName, "Gmail")
+        XCTAssertEqual(Platform.imessage.displayName, "iMessage")
+        XCTAssertFalse(Platform.gmail.icon.isEmpty)
+    }
+    
+    // MARK: - TimeRange
+    
+    func testTimeRangeStartDates() {
+        let now = Date()
+        for range in TimeRange.allCases {
+            XCTAssertLessThan(range.startDate, now)
+        }
     }
 }
