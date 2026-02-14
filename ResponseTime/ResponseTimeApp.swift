@@ -19,7 +19,8 @@ struct ResponseTimeApp: App {
             ResponseWindow.self,
             ResponseGoal.self,
             Participant.self,
-            UserPreferences.self
+            UserPreferences.self,
+            DismissedPending.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

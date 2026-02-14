@@ -314,6 +314,45 @@ final class UserPreferences {
     }
 }
 
+// MARK: - Dismissed Pending Response
+
+@Model
+final class DismissedPending {
+    @Attribute(.unique) var id: UUID
+    var contactIdentifier: String
+    var action: DismissAction
+    var dismissedAt: Date
+    var snoozeUntil: Date?
+    
+    init(
+        id: UUID = UUID(),
+        contactIdentifier: String,
+        action: DismissAction,
+        snoozeUntil: Date? = nil
+    ) {
+        self.id = id
+        self.contactIdentifier = contactIdentifier
+        self.action = action
+        self.dismissedAt = Date()
+        self.snoozeUntil = snoozeUntil
+    }
+    
+    var isActive: Bool {
+        switch action {
+        case .archived:
+            return true
+        case .snoozed:
+            guard let until = snoozeUntil else { return false }
+            return Date() < until
+        }
+    }
+}
+
+enum DismissAction: String, Codable, Sendable {
+    case archived
+    case snoozed
+}
+
 // MARK: - Analytics Models (Non-persistent)
 
 struct ResponseMetrics: Sendable {

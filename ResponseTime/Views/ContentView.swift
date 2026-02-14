@@ -306,6 +306,7 @@ struct DashboardView: View {
     @State private var metrics: ResponseMetrics?
     @State private var dailyData: [DailyMetrics] = []
     @State private var pendingContacts: [(name: String, identifier: String, waitingSince: Date)] = []
+    @Query private var dismissedPending: [DismissedPending]
     
     var body: some View {
         ScrollView {
@@ -560,9 +561,18 @@ struct DashboardView: View {
         }
     }
     
+    private var activePendingContacts: [(name: String, identifier: String, waitingSince: Date)] {
+        let dismissedIds = Set(
+            dismissedPending
+                .filter(\.isActive)
+                .map(\.contactIdentifier)
+        )
+        return pendingContacts.filter { !dismissedIds.contains($0.identifier) }
+    }
+    
     private var pendingResponsesSection: some View {
         Group {
-            if !pendingContacts.isEmpty {
+            if !activePendingContacts.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: "exclamationmark.bubble.fill")
@@ -570,43 +580,35 @@ struct DashboardView: View {
                         Text("Pending Responses")
                             .font(.headline)
                         Spacer()
-                        Text("\(pendingContacts.count)")
+                        Text("\(activePendingContacts.count)")
                             .font(.caption)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(Color.orange.opacity(0.2))
                             .foregroundColor(.orange)
                             .cornerRadius(8)
+                        
+                        let archivedCount = dismissedPending.filter(\.isActive).count
+                        if archivedCount > 0 {
+                            Button {
+                                // Clear all dismissed
+                                for d in dismissedPending { modelContext.delete(d) }
+                                try? modelContext.save()
+                            } label: {
+                                Text("Show \(archivedCount) hidden")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                        }
                     }
                     
-                    ForEach(pendingContacts.prefix(5), id: \.identifier) { pending in
-                        HStack {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.orange.opacity(0.15))
-                                    .frame(width: 36, height: 36)
-                                Text(String(pending.name.prefix(1)).uppercased())
-                                    .font(.headline)
-                                    .foregroundColor(.orange)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(pending.name)
-                                    .font(.subheadline)
-                                    .lineLimit(1)
-                                Text("Waiting \(pending.waitingSince, style: .relative)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            let wait = Date().timeIntervalSince(pending.waitingSince)
-                            Text(formatDuration(wait))
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundColor(wait > 3600 ? .red : wait > 1800 ? .orange : .yellow)
-                        }
-                        .padding(.vertical, 4)
+                    ForEach(activePendingContacts.prefix(8), id: \.identifier) { pending in
+                        PendingResponseRow(
+                            pending: pending,
+                            onArchive: { archivePending(pending.identifier) },
+                            onSnooze: { snoozePending(pending.identifier, hours: $0) }
+                        )
                     }
                 }
                 .padding()
@@ -614,6 +616,19 @@ struct DashboardView: View {
                 .cornerRadius(12)
             }
         }
+    }
+    
+    private func archivePending(_ identifier: String) {
+        let dismissed = DismissedPending(contactIdentifier: identifier, action: .archived)
+        modelContext.insert(dismissed)
+        try? modelContext.save()
+    }
+    
+    private func snoozePending(_ identifier: String, hours: Int) {
+        let until = Calendar.current.date(byAdding: .hour, value: hours, to: Date())
+        let dismissed = DismissedPending(contactIdentifier: identifier, action: .snoozed, snoozeUntil: until)
+        modelContext.insert(dismissed)
+        try? modelContext.save()
     }
     
     private var recentActivitySection: some View {
@@ -847,6 +862,67 @@ struct TrendChart: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Pending Response Row
+
+struct PendingResponseRow: View {
+    let pending: (name: String, identifier: String, waitingSince: Date)
+    let onArchive: () -> Void
+    let onSnooze: (Int) -> Void
+    
+    var body: some View {
+        HStack {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Text(String(pending.name.prefix(1)).uppercased())
+                    .font(.headline)
+                    .foregroundColor(.orange)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pending.name)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                Text("Waiting \(pending.waitingSince, style: .relative)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            let wait = Date().timeIntervalSince(pending.waitingSince)
+            Text(formatDuration(wait))
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(wait > 3600 ? .red : wait > 1800 ? .orange : .yellow)
+            
+            Menu {
+                Button { onSnooze(1) } label: {
+                    Label("Snooze 1 hour", systemImage: "clock")
+                }
+                Button { onSnooze(4) } label: {
+                    Label("Snooze 4 hours", systemImage: "clock")
+                }
+                Button { onSnooze(24) } label: {
+                    Label("Snooze until tomorrow", systemImage: "moon")
+                }
+                Divider()
+                Button { onArchive() } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundColor(.secondary)
+            }
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            #endif
+            .frame(width: 24)
+        }
+        .padding(.vertical, 4)
     }
 }
 
