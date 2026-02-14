@@ -516,4 +516,106 @@ final class ResponseAnalyzerTests: XCTestCase {
         let p2 = Participant(email: "hello@world.com")
         XCTAssertEqual(p2.label, "hello@world.com")
     }
+    
+    // MARK: - SourceAccount
+    
+    func testSourceAccountIsStale() {
+        let account = SourceAccount(platform: .imessage, displayName: "iMessage")
+        modelContext.insert(account)
+        
+        // No checkpoint = stale
+        XCTAssertTrue(account.isStale)
+        
+        // Recent checkpoint = not stale
+        account.syncCheckpoint = Date()
+        XCTAssertFalse(account.isStale)
+        
+        // Old checkpoint = stale
+        account.syncCheckpoint = Date().addingTimeInterval(-7200) // 2 hours ago
+        XCTAssertTrue(account.isStale)
+    }
+    
+    func testSourceAccountCounts() {
+        let account = SourceAccount(platform: .gmail, displayName: "Gmail")
+        modelContext.insert(account)
+        XCTAssertEqual(account.totalConversations, 0)
+        XCTAssertEqual(account.totalMessages, 0)
+    }
+    
+    // MARK: - UserPreferences
+    
+    func testUserPreferencesIsWorkingHour() {
+        let prefs = UserPreferences()
+        modelContext.insert(prefs)
+        
+        // Monday 10 AM should be working hours
+        let mondayComponents = DateComponents(year: 2026, month: 2, day: 16, hour: 10) // Monday
+        let monday10am = Calendar.current.date(from: mondayComponents)!
+        XCTAssertTrue(prefs.isWorkingHour(monday10am))
+        
+        // Saturday 10 AM should not be working hours
+        let satComponents = DateComponents(year: 2026, month: 2, day: 14, hour: 10) // Saturday
+        let sat10am = Calendar.current.date(from: satComponents)!
+        XCTAssertFalse(prefs.isWorkingHour(sat10am))
+        
+        // Monday 11 PM should not be working hours
+        let mondayLateComponents = DateComponents(year: 2026, month: 2, day: 16, hour: 23)
+        let monday11pm = Calendar.current.date(from: mondayLateComponents)!
+        XCTAssertFalse(prefs.isWorkingHour(monday11pm))
+    }
+    
+    // MARK: - ResponseMetrics
+    
+    func testResponseMetricsTrendDirection() {
+        let improving = ResponseMetrics(
+            platform: nil, timeRange: .week, sampleCount: 10,
+            medianLatency: 1800, meanLatency: 2000, p90Latency: 3600, p95Latency: 5400,
+            minLatency: 300, maxLatency: 7200,
+            workingHoursMedian: nil, nonWorkingHoursMedian: nil,
+            previousPeriodMedian: 3600, trendPercentage: -50
+        )
+        XCTAssertEqual(improving.trendDirection.icon, "arrow.down.right")
+        
+        let declining = ResponseMetrics(
+            platform: nil, timeRange: .week, sampleCount: 10,
+            medianLatency: 3600, meanLatency: 4000, p90Latency: 7200, p95Latency: 10800,
+            minLatency: 600, maxLatency: 14400,
+            workingHoursMedian: nil, nonWorkingHoursMedian: nil,
+            previousPeriodMedian: 1800, trendPercentage: 100
+        )
+        XCTAssertEqual(declining.trendDirection.icon, "arrow.up.right")
+    }
+    
+    // MARK: - Multiple Response Windows
+    
+    func testMultipleResponseWindowsInConversation() {
+        let account = SourceAccount(platform: .imessage, displayName: "Test")
+        modelContext.insert(account)
+        let conv = Conversation(id: "multi_conv", sourceAccount: account)
+        modelContext.insert(conv)
+        
+        let now = Date()
+        // 3 inbound-outbound pairs
+        for i in 0..<3 {
+            let offset = Double(i) * 7200 // 2 hours apart
+            let inbound = MessageEvent(
+                id: "multi_in_\(i)", conversation: conv,
+                timestamp: now.addingTimeInterval(-10800 + offset),
+                direction: .inbound, participantEmail: "test@test.com"
+            )
+            let outbound = MessageEvent(
+                id: "multi_out_\(i)", conversation: conv,
+                timestamp: now.addingTimeInterval(-10800 + offset + 600),
+                direction: .outbound, participantEmail: "me@test.com"
+            )
+            modelContext.insert(inbound)
+            modelContext.insert(outbound)
+        }
+        
+        let windows = analyzer.computeResponseWindows(for: conv)
+        XCTAssertEqual(windows.count, 3)
+        for w in windows {
+            XCTAssertEqual(w.latencySeconds, 600, accuracy: 1)
+        }
+    }
 }
