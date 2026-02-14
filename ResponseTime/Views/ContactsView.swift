@@ -103,6 +103,11 @@ struct ContactsView: View {
                     // Summary stats
                     summaryCards
                     
+                    // Fastest & slowest responders
+                    if !contacts.isEmpty {
+                        topRespondersSection
+                    }
+                    
                     // Toggle between Contacts and Groups
                     Picker("View", selection: $showGroups) {
                         Text("Individuals (\(filteredContacts.count))").tag(false)
@@ -249,6 +254,58 @@ struct ContactsView: View {
             title: "Pending",
             value: "\(overallStats.pendingResponses)"
         )
+    }
+    
+    private var topRespondersSection: some View {
+        let withResponse = contacts.filter { $0.medianResponseTime != nil && $0.responseCount >= 2 }
+        let fastest = withResponse.sorted { ($0.medianResponseTime ?? .infinity) < ($1.medianResponseTime ?? .infinity) }.prefix(3)
+        let slowest = withResponse.sorted { ($0.medianResponseTime ?? 0) > ($1.medianResponseTime ?? 0) }.prefix(3)
+        
+        return Group {
+            if !fastest.isEmpty {
+                #if os(macOS)
+                HStack(spacing: 16) {
+                    miniRankCard(title: "⚡ Fastest", contacts: Array(fastest), color: .green)
+                    miniRankCard(title: "🐢 Slowest", contacts: Array(slowest), color: .orange)
+                }
+                #else
+                VStack(spacing: 12) {
+                    miniRankCard(title: "⚡ Fastest", contacts: Array(fastest), color: .green)
+                    miniRankCard(title: "🐢 Slowest", contacts: Array(slowest), color: .orange)
+                }
+                #endif
+            }
+        }
+    }
+    
+    private func miniRankCard(title: String, contacts: [iMessageConnector.ContactStats], color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.bold())
+            
+            ForEach(Array(contacts.enumerated()), id: \.element.id) { idx, contact in
+                HStack(spacing: 8) {
+                    Text("\(idx + 1)")
+                        .font(.caption.bold())
+                        .foregroundColor(.secondary)
+                        .frame(width: 16)
+                    
+                    Text(contactNames[contact.identifier] ?? contact.displayName ?? contact.identifier)
+                        .font(.caption)
+                        .lineLimit(1)
+                    
+                    Spacer()
+                    
+                    Text(contact.medianResponseTime.map { formatDuration($0) } ?? "--")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(color)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
     }
     
     private func emptyState(message: String) -> some View {
