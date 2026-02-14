@@ -385,6 +385,26 @@ struct ResponseTimeWidgetEntryView: View {
                 }
             }
             
+            // Grade + Pending
+            if entry.grade != "--" || entry.pendingCount > 0 {
+                HStack {
+                    if entry.grade != "--" {
+                        Text("Grade: \(entry.grade)")
+                            .font(.caption.bold())
+                            .foregroundColor(gradeColor)
+                    }
+                    Spacer()
+                    if entry.pendingCount > 0 {
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.bubble.fill")
+                            Text("\(entry.pendingCount) pending")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                    }
+                }
+            }
+            
             Spacer()
             
             // Footer
