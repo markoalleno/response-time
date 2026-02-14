@@ -1,163 +1,143 @@
 # Response Time
 
-A privacy-first app that analyzes your personal response times across messaging platforms.
+A privacy-first macOS app that analyzes your personal response times across messaging platforms.
 
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20iOS%20%7C%20iPadOS-blue)
+![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
 ![Swift](https://img.shields.io/badge/swift-6.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
 
 ## Features
 
 ### 📊 Dashboard
-- Real-time response time metrics
-- Trend visualization with charts
-- Platform breakdown
-- Goal progress tracking
+- Real-time response time metrics with trend indicators
+- **Response Score** — composite A+ to F grade (speed, consistency, coverage)
+- **Response Velocity** — responses/day with week-over-week comparison
+- Goal progress ring visualization
+- Platform breakdown by median response time
+- Pending responses with archive/snooze/quick reply
+- Last synced indicator
+
+### 📅 Weekly Digest
+- Week-by-week navigation with summary metrics
+- Response Score with week-over-week comparison
+- Daily breakdown chart
+- Top contacts for the week
+- Highlights section (fastest response, busiest day, peak hour)
+- Day-by-day horizontal bar visualization
+
+### 📈 Analytics (7 chart types)
+- **Trend** — Response time over time with area fill
+- **Compare** — Current vs previous period overlay
+- **Weekly** — Day-of-week breakdown (weekday vs weekend)
+- **Heatmap** — 7×24 day/hour grid with intensity-based colors
+- **Hourly** — Hour-of-day response patterns
+- **Distribution** — Response time buckets (<30m, 30m-1h, etc.)
+- **By Platform** — Horizontal bar comparison
+
+### 🧠 Smart Insights
+- "You respond faster on Tuesdays"
+- Peak hour identification
+- Working hours vs off-hours comparison
+- Speed tier classification (Speed Demon / Taking Your Time)
+- Week-over-week trend (Improving! / Slowing Down)
+- Consistency analysis (tight cluster vs wide variance)
+
+### 🎯 Goals & Streaks
+- Create response time goals per platform or globally
+- Drag-to-reorder goal priority
+- Current streak and longest streak tracking
+- 7-day dot visualization
+- Suggested goals (iMessage 30min, Gmail 1hr, Slack 15min)
+
+### 👥 Contacts
+- Per-contact response time analytics
+- Fastest/slowest responders ranking
+- iMessage vs SMS service filter
+- Contact detail sheets with response distribution chart
+- Sparkline trend per contact
+- Search by name, phone, or email
 
 ### 🔗 Supported Platforms
-- **Gmail** - OAuth 2.0 integration with Google APIs
-- **Microsoft 365** - Graph API with delta sync support
-- **Slack** - DM and mention tracking
-- **iMessage** - Local database analysis (requires permissions)
+- **iMessage** — Local database analysis (timestamps only, never content)
+- **Gmail** — OAuth 2.0 ready
+- **Microsoft 365** — Graph API ready
+- **Slack** — OAuth 2.0 ready
+
+### 🔔 Notifications
+- Threshold alerts (configurable: 15min to 4hr)
+- Daily summary at custom time
+- **Quiet hours** — suppress during sleep/focus time
+
+### 🖥 Menu Bar
+- Real-time median response time display
+- Pending count with badge
+- Response grade (A+/B/C)
+- Trend percentage vs previous week
+- Copy stats to clipboard
+- Quick access to dashboard and settings
+
+### 📱 Widget
+- Small/Medium/Large widget sizes
+- **Real iMessage data** (reads chat.db directly)
+- Grade badge and pending count
+- Configurable time range (Today/Week/Month)
+- Goal progress bar
+
+### 🗣 Siri & Shortcuts
+- "Get my response time" — median with platform filter
+- "Check my response goals" — grade + progress + median
+- "Who haven't I responded to?" — pending responses list
+- "Sync Response Time" — trigger sync with stats
+
+### ⌨️ Keyboard Shortcuts
+- ⌘1-5 — Switch tabs
+- ⌘R — Sync now
+- ⌘, — Settings
+
+### ♿ Accessibility
+- VoiceOver labels on dashboard cards, stats, contacts
+- Tooltips on score components
+- High contrast color coding
 
 ### 🔒 Privacy First
-- **100% local processing** - All data stays on your device
-- **Metadata only** - We never read message content
-- **No cloud required** - Your data is yours
-- **One-click deletion** - Remove all data anytime
+- **100% local processing** — All data stays on your device
+- **Metadata only** — Never reads message content
+- **No cloud** — No accounts, no telemetry, no tracking
+- **One-click deletion** — Remove all data anytime
+- **Onboarding** — Permission check with auto-setup
 
-### 📈 Analytics
-- Response time trends over time
-- Working hours vs. off-hours analysis
-- Contact-level metrics
-- Distribution charts
-- Weekly patterns
+### 📤 Export
+- CSV, JSON, and Markdown summary report
+- Save to file or clipboard
 
-### 🎯 Goals
-- Set response time targets by platform
-- Track progress with visual indicators
-- Get insights when falling behind
-
-### 🖥️ Platform Features
-
-#### macOS
-- Menu bar extra for quick metrics
-- Desktop widgets (small, medium, large)
-- Settings preferences window
-- Keyboard shortcuts
-
-#### iOS & iPadOS
-- Native tab-based navigation
-- Home screen widgets
-- Siri Shortcuts integration
-- Share sheet export
-
-## Requirements
-
-- **macOS** 15.0 (Sequoia) or later
-- **iOS/iPadOS** 18.0 or later
-- Xcode 16.0+ for development
-
-## Building
-
-### Prerequisites
-- Xcode 16.0+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-
-### Build Steps
-
-```bash
-# Clone the repository
-git clone https://github.com/markoalleno/response-time.git
-cd response-time
-
-# Generate Xcode project
-xcodegen generate
-
-# Build for macOS
-xcodebuild -scheme ResponseTime-macOS -destination 'platform=macOS' build
-
-# Build for iOS Simulator
-xcodebuild -scheme ResponseTime-iOS -destination 'generic/platform=iOS Simulator' build
-```
-
-## OAuth Configuration
-
-To connect to messaging platforms, you'll need to configure OAuth credentials:
-
-### Gmail
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com)
-2. Enable Gmail API
-3. Create OAuth 2.0 credentials
-4. Update `CLIENT_ID` in `OAuthService.swift`
-
-### Microsoft 365
-1. Register an app in [Azure Portal](https://portal.azure.com)
-2. Configure redirect URI
-3. Add Mail.Read permission
-4. Update `CLIENT_ID` in `OAuthService.swift`
-
-### Slack
-1. Create an app at [api.slack.com](https://api.slack.com/apps)
-2. Configure OAuth scopes
-3. Update `CLIENT_ID` in `OAuthService.swift`
-
-## Architecture
-
-### Tech Stack
+## Tech Stack
 - **Swift 6** with strict concurrency
 - **SwiftUI** for all UI
 - **SwiftData** for persistence
 - **Swift Charts** for visualizations
 - **App Intents** for Siri/Shortcuts
-- **WidgetKit** for home screen widgets
+- **WidgetKit** for desktop widgets
+- macOS 15+ (Sequoia)
 
-### Project Structure
+## Building
+
+```bash
+# Generate Xcode project
+cd /path/to/response-time
+xcodegen generate
+
+# Build
+xcodebuild -scheme ResponseTime-macOS -destination 'platform=macOS' build
+
+# Test (36 tests)
+xcodebuild -scheme ResponseTime-macOS -destination 'platform=macOS' test
 ```
-ResponseTime/
-├── Models/           # SwiftData models
-├── Views/            # SwiftUI views
-├── Services/         # Business logic
-│   ├── Connectors/   # Platform API connectors
-│   └── ...
-├── Assets.xcassets/  # Images and colors
-└── PrivacyInfo.xcprivacy
 
-ResponseTimeWidget/   # Widget extension
-```
-
-### Key Components
-- **SyncCoordinator** - Orchestrates sync across platforms
-- **ResponseAnalyzer** - Computes metrics and response windows
-- **GmailConnector/MicrosoftConnector/SlackConnector** - Platform-specific API clients
-- **ExportService** - CSV and JSON export
-
-## Privacy
-
-Response Time is designed with privacy as a core principle:
-
-- All data processing happens locally on your device
-- Only message metadata (timestamps, participants) is accessed
-- Message content is never read or stored
-- No analytics or telemetry is collected
-- Optional iCloud sync uses your private CloudKit container
-
-See [Privacy Policy](https://example.com/privacy) for details.
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting a PR.
+## Requirements
+- macOS 15.0+
+- Xcode 16+
+- Full Disk Access (for iMessage)
 
 ## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-- Apple's Swift and SwiftUI teams
-- The XcodeGen project
-- All contributors and testers
-
----
-
-Made with ❤️ by Mark Allen
+MIT © Mark Allen
