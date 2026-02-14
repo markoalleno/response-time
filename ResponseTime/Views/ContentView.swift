@@ -517,11 +517,16 @@ struct DashboardView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
-                // Last response time
-                if let lastResponse = recentResponses.first {
-                    Text("Last response: \(lastResponse.computedAt, style: .relative)")
+                HStack(spacing: 16) {
+                    Text("\(metrics.sampleCount) responses")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    
+                    if let lastResponse = recentResponses.first {
+                        Text("Last: \(lastResponse.computedAt, style: .relative)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
             } else {
                 Text("--")
