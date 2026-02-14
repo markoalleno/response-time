@@ -108,6 +108,13 @@ final class MenuBarManager {
             )
             lastUpdate = Date()
             
+            // Update dock badge with pending count
+            if totalPending > 0 {
+                NSApp.dockTile.badgeLabel = "\(totalPending)"
+            } else {
+                NSApp.dockTile.badgeLabel = nil
+            }
+            
         } catch {
             if let iMsgError = error as? iMessageError {
                 switch iMsgError {
