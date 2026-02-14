@@ -430,7 +430,15 @@ class SyncManager {
                 
                 if goal.currentStreak > goal.longestStreak {
                     goal.longestStreak = goal.currentStreak
-                    // New record! Could trigger notification here
+                    // Notify new record
+                    let goalName = goal.platform?.displayName ?? "All Platforms"
+                    let streak = goal.currentStreak
+                    Task { @MainActor in
+                        try? await NotificationService.shared.notifyStreakRecord(
+                            goalName: goalName,
+                            streakDays: streak
+                        )
+                    }
                 }
             } else if let lastDate = goal.lastStreakDate, !calendar.isDate(lastDate, inSameDayAs: today) && !calendar.isDate(lastDate, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: today)!) {
                 // Streak broken

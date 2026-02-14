@@ -154,6 +154,23 @@ final class NotificationService: Sendable {
         try await UNUserNotificationCenter.current().add(request)
     }
     
+    // MARK: - Streak Notifications
+    
+    func notifyStreakRecord(goalName: String, streakDays: Int) async throws {
+        let content = UNMutableNotificationContent()
+        content.title = "🔥 New Streak Record!"
+        content.body = "\(goalName): \(streakDays) day streak — your new personal best!"
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: "streak_record_\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+        
+        try await UNUserNotificationCenter.current().add(request)
+    }
+    
     // MARK: - Management
     
     func cancelAllNotifications() {
