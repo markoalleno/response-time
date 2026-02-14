@@ -12,6 +12,8 @@ struct ResponseTimeEntry: TimelineEntry {
     let platformBreakdown: [(Platform, TimeInterval)]
     let timeRange: WidgetTimeRange
     let showPlatforms: Bool
+    var grade: String = "--"
+    var pendingCount: Int = 0
 }
 
 // MARK: - Configuration Intent
@@ -95,7 +97,9 @@ struct Provider: AppIntentTimelineProvider {
                 goalProgress: stats.goalProgress,
                 platformBreakdown: [(.imessage, stats.median)],
                 timeRange: configuration.timeRange,
-                showPlatforms: configuration.showPlatforms
+                showPlatforms: configuration.showPlatforms,
+                grade: stats.grade,
+                pendingCount: stats.pendingCount
             )
         }
         
@@ -113,6 +117,8 @@ struct Provider: AppIntentTimelineProvider {
     private struct QuickStats {
         let median: TimeInterval
         let goalProgress: Double
+        let grade: String
+        let pendingCount: Int
     }
     
     private func readIMessageStats(days: Int) -> QuickStats? {
@@ -177,7 +183,20 @@ struct Provider: AppIntentTimelineProvider {
         let withinTarget = sorted.filter { $0 <= target }.count
         let goalProgress = Double(withinTarget) / Double(sorted.count)
         
-        return QuickStats(median: median, goalProgress: goalProgress)
+        // Compute grade
+        let speedRatio = min(median / target, 10)
+        let speed = max(0, Int(100 * (1 - speedRatio / 10)))
+        let grade = speed >= 90 ? "A+" : speed >= 80 ? "A" : speed >= 70 ? "B" : speed >= 60 ? "C" : speed >= 50 ? "D" : "F"
+        
+        // Count pending (rough: check last message per handle)
+        var pendingCount = 0
+        for (_, messages) in messagesByHandle {
+            if let last = messages.last, !last.isFromMe {
+                pendingCount += 1
+            }
+        }
+        
+        return QuickStats(median: median, goalProgress: goalProgress, grade: grade, pendingCount: pendingCount)
     }
 }
 
@@ -203,12 +222,17 @@ struct ResponseTimeWidgetEntryView: View {
     // MARK: - Small Widget
     
     private var smallWidget: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             HStack {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
+                if entry.grade != "--" {
+                    Text(entry.grade)
+                        .font(.caption.bold())
+                        .foregroundColor(gradeColor)
+                }
             }
             
             Text(formatDuration(entry.medianResponseTime))
@@ -218,6 +242,12 @@ struct ResponseTimeWidgetEntryView: View {
             Text("Median")
                 .font(.caption2)
                 .foregroundColor(.secondary)
+            
+            if entry.pendingCount > 0 {
+                Text("\(entry.pendingCount) pending")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            }
             
             Spacer()
             
@@ -374,6 +404,15 @@ struct ResponseTimeWidgetEntryView: View {
         if entry.goalProgress >= 0.8 { return .green }
         if entry.goalProgress >= 0.6 { return .yellow }
         return .red
+    }
+    
+    private var gradeColor: Color {
+        switch entry.grade {
+        case "A+", "A": return .green
+        case "B": return .yellow
+        case "C": return .orange
+        default: return .red
+        }
     }
 }
 
