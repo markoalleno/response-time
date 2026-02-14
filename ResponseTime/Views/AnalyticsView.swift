@@ -17,6 +17,7 @@ struct AnalyticsView: View {
         case comparison = "Compare"
         case weekly = "Weekly"
         case heatmap = "Heatmap"
+        case hourly = "Hourly"
         case distribution = "Distribution"
         case byPlatform = "By Platform"
         
@@ -28,6 +29,7 @@ struct AnalyticsView: View {
             case .comparison: return "arrow.left.arrow.right"
             case .weekly: return "calendar"
             case .heatmap: return "square.grid.3x3.fill"
+            case .hourly: return "clock"
             case .distribution: return "chart.bar.fill"
             case .byPlatform: return "chart.pie.fill"
             }
@@ -144,6 +146,8 @@ struct AnalyticsView: View {
             weeklyPatternChart
         case .heatmap:
             heatmapChart
+        case .hourly:
+            hourlyChart
         case .distribution:
             distributionChart
         case .byPlatform:
@@ -384,6 +388,53 @@ struct AnalyticsView: View {
         } else {
             return Color.red.opacity(0.5)
         }
+    }
+    
+    private var hourlyChart: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Response Time by Hour of Day")
+                .font(.headline)
+            
+            let hourlyData = ResponseAnalyzer.shared.computeHourlyMetrics(windows: responseWindows.filter(\.isValidForAnalytics))
+            let hasData = hourlyData.contains { $0.responseCount > 0 }
+            
+            if !hasData {
+                emptyChartState
+            } else {
+                Chart {
+                    ForEach(hourlyData.filter { $0.responseCount > 0 }) { point in
+                        BarMark(
+                            x: .value("Hour", "\(point.hour):00"),
+                            y: .value("Minutes", point.medianLatency / 60)
+                        )
+                        .foregroundStyle(hourColor(point.medianLatency))
+                        .cornerRadius(3)
+                    }
+                }
+                .chartYAxisLabel("Minutes")
+                
+                // Working hours indicator
+                let start = UserDefaults.standard.integer(forKey: "workingHoursStart")
+                let end = UserDefaults.standard.integer(forKey: "workingHoursEnd")
+                Text("Working hours: \(formatHour12(start == 0 ? 9 : start)) – \(formatHour12(end == 0 ? 17 : end))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    private func hourColor(_ seconds: TimeInterval) -> Color {
+        if seconds < 1800 { return .green }
+        if seconds < 3600 { return .blue }
+        if seconds < 7200 { return .yellow }
+        return .orange
+    }
+    
+    private func formatHour12(_ hour: Int) -> String {
+        if hour == 0 { return "12 AM" }
+        if hour < 12 { return "\(hour) AM" }
+        if hour == 12 { return "12 PM" }
+        return "\(hour - 12) PM"
     }
     
     private var distributionChart: some View {
