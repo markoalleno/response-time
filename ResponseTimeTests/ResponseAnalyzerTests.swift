@@ -708,4 +708,34 @@ final class ResponseAnalyzerTests: XCTestCase {
             XCTAssertEqual(w.latencySeconds, 600, accuracy: 1)
         }
     }
+    
+    // MARK: - Platform & TimeRange Tests
+    
+    func testAllPlatformsHaveNonEmptyProperties() {
+        for platform in Platform.allCases {
+            XCTAssertFalse(platform.displayName.isEmpty)
+            XCTAssertFalse(platform.icon.isEmpty)
+            XCTAssertFalse(platform.id.isEmpty)
+        }
+    }
+    
+    func testTimeRangeProperties() {
+        XCTAssertEqual(TimeRange.today.displayName, "Today")
+        XCTAssertEqual(TimeRange.week.displayName, "This Week")
+        XCTAssertEqual(TimeRange.month.displayName, "This Month")
+        XCTAssertEqual(TimeRange.quarter.displayName, "This Quarter")
+        
+        for range in TimeRange.allCases {
+            let start = range.startDate
+            XCTAssertTrue(start < Date())
+        }
+    }
+    
+    func testThreadingMethodValues() {
+        XCTAssertEqual(ThreadingMethod.messageId.rawValue, "message_id")
+        XCTAssertEqual(ThreadingMethod.threadId.rawValue, "thread_id")
+        XCTAssertEqual(ThreadingMethod.timeWindow.rawValue, "time_window")
+        XCTAssertEqual(ThreadingMethod.subjectMatch.rawValue, "subject_match")
+        XCTAssertEqual(ThreadingMethod.references.rawValue, "references")
+    }
 }
