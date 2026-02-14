@@ -99,11 +99,19 @@ struct MenuBarLabel: View {
     
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: "clock.arrow.circlepath")
+            Image(systemName: menuBarManager.currentStats.totalPending > 0
+                  ? "clock.badge.exclamationmark"
+                  : "clock.arrow.circlepath")
             
             if let latency = menuBarManager.currentStats.overallMedianLatency {
                 Text(formatMenuBarTime(latency))
                     .font(.system(.caption, design: .monospaced))
+            }
+            
+            if menuBarManager.currentStats.totalPending > 0 {
+                Text("(\(menuBarManager.currentStats.totalPending))")
+                    .font(.system(.caption2, design: .rounded))
+                    .foregroundColor(.orange)
             }
         }
         .task {
