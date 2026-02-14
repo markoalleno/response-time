@@ -535,6 +535,8 @@ struct RealContactRow: View {
         .padding()
         .background(cardBackgroundColor)
         .cornerRadius(12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(displayName), \(contact.medianResponseTime.map { formatDuration($0) } ?? "no data"), \(contact.responseCount) responses")
     }
     
     private var displayName: String {
