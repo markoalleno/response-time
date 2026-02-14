@@ -339,10 +339,13 @@ struct SettingsView: View {
     
     private func deleteAllData() {
         // Delete in dependency order
-        for type in [ResponseWindow.self, MessageEvent.self, Conversation.self, Participant.self, SourceAccount.self, ResponseGoal.self] as [any PersistentModel.Type] {
+        for type in [DismissedPending.self, ResponseWindow.self, MessageEvent.self, Conversation.self, Participant.self, SourceAccount.self, ResponseGoal.self] as [any PersistentModel.Type] {
             deleteAll(type, from: modelContext)
         }
         try? modelContext.save()
+        
+        // Reset user defaults
+        UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
     }
     
     private func deleteAll<T: PersistentModel>(_ type: T.Type, from context: ModelContext) {
