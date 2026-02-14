@@ -14,6 +14,7 @@ struct AnalyticsView: View {
     
     enum ChartType: String, CaseIterable, Identifiable {
         case trend = "Trend"
+        case comparison = "Compare"
         case weekly = "Weekly"
         case heatmap = "Heatmap"
         case distribution = "Distribution"
@@ -24,6 +25,7 @@ struct AnalyticsView: View {
         var icon: String {
             switch self {
             case .trend: return "chart.line.uptrend.xyaxis"
+            case .comparison: return "arrow.left.arrow.right"
             case .weekly: return "calendar"
             case .heatmap: return "square.grid.3x3.fill"
             case .distribution: return "chart.bar.fill"
@@ -136,6 +138,8 @@ struct AnalyticsView: View {
         switch selectedChart {
         case .trend:
             trendChart
+        case .comparison:
+            comparisonChart
         case .weekly:
             weeklyPatternChart
         case .heatmap:
@@ -187,6 +191,82 @@ struct AnalyticsView: View {
                 }
             }
         }
+    }
+    
+    private var comparisonChart: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("This Period vs Previous")
+                .font(.headline)
+            
+            let current = realDailyData
+            let previous = previousDailyData
+            
+            if current.isEmpty && previous.isEmpty {
+                emptyChartState
+            } else {
+                Chart {
+                    ForEach(current) { point in
+                        LineMark(
+                            x: .value("Day", point.date),
+                            y: .value("Minutes", point.medianLatency / 60),
+                            series: .value("Period", "Current")
+                        )
+                        .foregroundStyle(Color.accentColor)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+                    
+                    ForEach(previous) { point in
+                        LineMark(
+                            x: .value("Day", point.date),
+                            y: .value("Minutes", point.medianLatency / 60),
+                            series: .value("Period", "Previous")
+                        )
+                        .foregroundStyle(Color.secondary)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
+                    }
+                }
+                .chartYAxisLabel("Minutes")
+                .chartForegroundStyleScale([
+                    "Current": Color.accentColor,
+                    "Previous": Color.secondary
+                ])
+                
+                // Summary
+                let curMedian = current.isEmpty ? nil : current.map(\.medianLatency).sorted()[current.count / 2]
+                let prevMedian = previous.isEmpty ? nil : previous.map(\.medianLatency).sorted()[previous.count / 2]
+                
+                if let cur = curMedian, let prev = prevMedian {
+                    let change = ((cur - prev) / max(prev, 1)) * 100
+                    HStack {
+                        Image(systemName: change < 0 ? "arrow.down.right" : "arrow.up.right")
+                            .foregroundColor(change < 0 ? .green : .red)
+                        Text(change < 0 ? "Improved \(Int(abs(change)))% from previous period" : "Increased \(Int(change))% from previous period")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var previousDailyData: [DailyMetrics] {
+        let analyzer = ResponseAnalyzer.shared
+        let range = appState.selectedTimeRange
+        let currentStart = range.startDate
+        let duration = Date().timeIntervalSince(currentStart)
+        let previousStart = currentStart.addingTimeInterval(-duration)
+        
+        // Filter windows to previous period and shift dates forward
+        let previousWindows = responseWindows.filter { w in
+            guard let t = w.inboundEvent?.timestamp else { return false }
+            return t >= previousStart && t < currentStart && w.isValidForAnalytics
+        }
+        
+        // Compute daily metrics but shift dates forward by `duration`
+        let raw = analyzer.computeDailyMetrics(windows: previousWindows, platform: appState.selectedPlatform, timeRange: .year)
+        return raw.map { DailyMetrics(date: $0.date.addingTimeInterval(duration), medianLatency: $0.medianLatency, messageCount: $0.messageCount, responseCount: $0.responseCount) }
     }
     
     private var weeklyPatternChart: some View {
