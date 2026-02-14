@@ -371,6 +371,11 @@ struct DashboardView: View {
                 }
                 #endif
                 
+                // Velocity metric
+                if recentResponses.count >= 5 {
+                    velocityCard
+                }
+                
                 // Pending responses (actionable)
                 pendingResponsesSection
                 
@@ -650,6 +655,52 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+    
+    private var velocityCard: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: today)!
+        let twoWeeksAgo = calendar.date(byAdding: .day, value: -14, to: today)!
+        
+        let thisWeek = recentResponses.filter {
+            ($0.inboundEvent?.timestamp ?? .distantPast) >= weekAgo
+        }.count
+        let lastWeek = recentResponses.filter {
+            let t = $0.inboundEvent?.timestamp ?? .distantPast
+            return t >= twoWeeksAgo && t < weekAgo
+        }.count
+        
+        let dailyAvg = Double(thisWeek) / 7
+        let change = lastWeek > 0 ? Int(((Double(thisWeek) - Double(lastWeek)) / Double(lastWeek)) * 100) : 0
+        
+        return HStack(spacing: 16) {
+            Image(systemName: "speedometer")
+                .font(.title2)
+                .foregroundColor(.accentColor)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Response Velocity")
+                    .font(.subheadline.bold())
+                Text("\(String(format: "%.1f", dailyAvg)) responses/day this week")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            if lastWeek > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: change > 0 ? "arrow.up.right" : change < 0 ? "arrow.down.right" : "minus")
+                    Text("\(abs(change))%")
+                }
+                .font(.subheadline)
+                .foregroundColor(change > 10 ? .green : change < -10 ? .orange : .secondary)
+            }
+        }
+        .padding()
+        .background(cardBackgroundColor)
+        .cornerRadius(12)
     }
     
     private var activePendingContacts: [(name: String, identifier: String, waitingSince: Date)] {
