@@ -917,10 +917,23 @@ struct DashboardView: View {
                             .foregroundColor(.orange)
                             .cornerRadius(8)
                         
+                        Button {
+                            // Archive all pending
+                            for pending in activePendingContacts {
+                                let dismissed = DismissedPending(contactIdentifier: pending.identifier, action: .archived)
+                                modelContext.insert(dismissed)
+                            }
+                            try? modelContext.save()
+                        } label: {
+                            Text("Archive All")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                        
                         let archivedCount = dismissedPending.filter(\.isActive).count
                         if archivedCount > 0 {
                             Button {
-                                // Clear all dismissed
                                 for d in dismissedPending { modelContext.delete(d) }
                                 try? modelContext.save()
                             } label: {
