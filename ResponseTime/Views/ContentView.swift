@@ -322,13 +322,46 @@ struct DashboardView: View {
         #endif
     }
     
+    @State private var permissionStatus: PermissionStatus = .unknown
+    
+    enum PermissionStatus {
+        case unknown, granted, denied
+    }
+    
     private var metricsHeader: some View {
         VStack(spacing: 8) {
+            if permissionStatus == .denied {
+                // Permission banner
+                VStack(spacing: 12) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(.orange)
+                    Text("Full Disk Access Required")
+                        .font(.headline)
+                    Text("Response Time needs permission to read your Messages database. Only timestamps are read — never message content.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    #if os(macOS)
+                    Button("Open System Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    #endif
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(12)
+            }
+            
             Text("Response Time")
                 .font(.headline)
                 .foregroundColor(.secondary)
             
-            if let metrics = metrics {
+            if let metrics = metrics, metrics.sampleCount > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(metrics.formattedMedian)
                         .font(.system(size: 48, weight: .bold, design: .rounded))
@@ -350,13 +383,21 @@ struct DashboardView: View {
                 Text("--")
                     .font(.system(size: 48, weight: .bold, design: .rounded))
                     .foregroundColor(.secondary)
-                Text("No data yet")
+                Text(appState.isSyncing ? "Syncing..." : "No data yet — tap sync to get started")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
+        .task {
+            checkPermission()
+        }
+    }
+    
+    private func checkPermission() {
+        let testPath = NSHomeDirectory() + "/Library/Messages/chat.db"
+        permissionStatus = FileManager.default.isReadableFile(atPath: testPath) ? .granted : .denied
     }
     
     private var timeRangePicker: some View {
