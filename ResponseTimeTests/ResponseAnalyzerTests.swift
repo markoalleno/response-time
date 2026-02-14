@@ -623,6 +623,22 @@ final class ResponseAnalyzerTests: XCTestCase {
         XCTAssertFalse(dismissed.isActive) // No snooze date = not active
     }
     
+    // MARK: - Export Edge Cases
+    
+    func testExportCSVWithNoWindows() {
+        let exporter = ExportService()
+        let result = exporter.exportResponseData(windows: [], format: .csv)
+        let str = String(data: result.data, encoding: .utf8) ?? ""
+        XCTAssertTrue(str.contains("date,time,platform"))  // Header should still exist
+    }
+    
+    func testExportJSONWithNoWindows() {
+        let exporter = ExportService()
+        let result = exporter.exportResponseData(windows: [], format: .json)
+        let str = String(data: result.data, encoding: .utf8) ?? ""
+        XCTAssertFalse(str.isEmpty)
+    }
+    
     // MARK: - Goal Streak Logic
     
     func testGoalStreakInit() {
