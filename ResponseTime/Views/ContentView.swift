@@ -264,6 +264,14 @@ struct ContentView: View {
         defer { appState.isSyncing = false }
         
         do {
+            // Clean up expired snoozes
+            let expiredDescriptor = FetchDescriptor<DismissedPending>()
+            if let all = try? modelContext.fetch(expiredDescriptor) {
+                for d in all where !d.isActive {
+                    modelContext.delete(d)
+                }
+            }
+            
             // Sync iMessage data to SwiftData (creates MessageEvents + ResponseWindows)
             try await iMessageSyncService.shared.syncToSwiftData(modelContext: modelContext)
             appState.lastSyncDate = Date()
@@ -646,6 +654,12 @@ struct DashboardView: View {
         let dismissed = DismissedPending(contactIdentifier: identifier, action: .archived)
         modelContext.insert(dismissed)
         try? modelContext.save()
+    }
+    
+    private func cleanExpiredDismissals() {
+        let expired = dismissedPending.filter { !$0.isActive }
+        for d in expired { modelContext.delete(d) }
+        if !expired.isEmpty { try? modelContext.save() }
     }
     
     private func snoozePending(_ identifier: String, hours: Int) {
