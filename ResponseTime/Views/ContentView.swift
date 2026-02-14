@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Combine
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
@@ -8,6 +9,8 @@ struct ContentView: View {
     @Query private var accounts: [SourceAccount]
     
     @State private var selectedTab: Tab = .dashboard
+    
+    private let autoSyncTimer = Timer.publish(every: 1800, on: .main, in: .common).autoconnect()
     
     enum Tab: String, CaseIterable, Identifiable {
         case dashboard = "Dashboard"
@@ -70,6 +73,11 @@ struct ContentView: View {
             if !hasCompleted {
                 appState.isOnboarding = true
                 UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+            }
+        }
+        .onReceive(autoSyncTimer) { _ in
+            if !appState.isSyncing && UserDefaults.standard.bool(forKey: "syncInBackground") {
+                Task { await performSync() }
             }
         }
         .task {
