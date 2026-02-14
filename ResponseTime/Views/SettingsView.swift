@@ -338,8 +338,16 @@ struct SettingsView: View {
             }
             
             Section {
-                Button("Export All Data (CSV)") {
-                    exportData()
+                Button("Export as CSV") {
+                    exportData(format: .csv)
+                }
+                
+                Button("Export as JSON") {
+                    exportData(format: .json)
+                }
+                
+                Button("Export Summary Report") {
+                    exportSummaryReport()
                 }
                 
                 Button("Delete All Data") {
@@ -361,12 +369,33 @@ struct SettingsView: View {
         .padding()
     }
     
-    private func exportData() {
+    private func exportData(format: ExportService.ExportFormat = .csv) {
         let descriptor = FetchDescriptor<ResponseWindow>(
             sortBy: [SortDescriptor(\.computedAt, order: .reverse)]
         )
         let windows = (try? modelContext.fetch(descriptor)) ?? []
-        let result = ExportService.shared.exportResponseData(windows: windows, format: .csv)
+        let result = ExportService.shared.exportResponseData(windows: windows, format: format)
+        ExportService.shared.saveExport(result)
+    }
+    
+    private func exportSummaryReport() {
+        let windowsDescriptor = FetchDescriptor<ResponseWindow>(
+            sortBy: [SortDescriptor(\.computedAt, order: .reverse)]
+        )
+        let goalsDescriptor = FetchDescriptor<ResponseGoal>()
+        
+        let windows = (try? modelContext.fetch(windowsDescriptor)) ?? []
+        let goals = (try? modelContext.fetch(goalsDescriptor)) ?? []
+        
+        let analyzer = ResponseAnalyzer.shared
+        let metrics = analyzer.computeMetrics(for: windows, platform: nil, timeRange: .month)
+        let dailyData = analyzer.computeDailyMetrics(windows: windows, platform: nil, timeRange: .month)
+        
+        let result = ExportService.shared.exportSummaryReport(
+            metrics: metrics,
+            dailyData: dailyData,
+            goals: goals
+        )
         ExportService.shared.saveExport(result)
     }
     
